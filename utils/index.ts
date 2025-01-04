@@ -3,6 +3,7 @@ import {
   AccountMeta,
   AddressLookupTableAccount,
   Connection,
+  MessageV0,
   PublicKey,
   TransactionMessage,
   VersionedTransaction,
@@ -63,7 +64,7 @@ export function isStaticWritableIndex(
   message: VaultTransactionMessage,
   index: number
 ) {
-  const numAccountKeys = message.accountKeys.length;
+  const numAccountKeys = message.numAccountKeys;
   const { numSigners, numWritableSigners, numWritableNonSigners } = message;
 
   if (index >= numAccountKeys) {
@@ -90,37 +91,24 @@ export function isSignerIndex(message: VaultTransactionMessage, index: number) {
   return index < message.numSigners;
 }
 
-/** We use custom serialization for `transaction_message` that ensures as small byte size as possible. */
-export function transactionMessageToMultisigTransactionMessageBytes({
+export function transactionMessageToCompileMessage({
   message,
   addressLookupTableAccounts,
 }: {
   message: TransactionMessage;
   addressLookupTableAccounts?: AddressLookupTableAccount[];
 }) {
-  // // Make sure authority is marked as non-signer in all instructions,
-  // // otherwise the message will be serialized in incorrect format.
-  // message.instructions.forEach((instruction) => {
-  //   instruction.keys.forEach((key) => {
-  //     if (key.pubkey.equals(vaultPda)) {
-  //       key.isSigner = false;
-  //     }
-  //   });
-  // });
-
-  // Use custom implementation of `message.compileToV0Message` that allows instruction programIds
-  // to also be loaded from `addressLookupTableAccounts`.
   const compiledMessage = compileToWrappedMessageV0({
     payerKey: message.payerKey,
     recentBlockhash: message.recentBlockhash,
     instructions: message.instructions,
     addressLookupTableAccounts,
   });
-  // const compiledMessage = message.compileToV0Message(
-  //   addressLookupTableAccounts
-  // );
 
-  // We use custom serialization for `transaction_message` that ensures as small byte size as possible.
+  return compiledMessage;
+}
+
+export function transactionMessageSerialize(compiledMessage: MessageV0) {
   const [transactionMessageBytes] = vaultTransactionMessageBeet.serialize({
     numSigners: compiledMessage.header.numRequiredSignatures,
     numWritableSigners:
@@ -130,10 +118,7 @@ export function transactionMessageToMultisigTransactionMessageBytes({
       compiledMessage.staticAccountKeys.length -
       compiledMessage.header.numRequiredSignatures -
       compiledMessage.header.numReadonlyUnsignedAccounts,
-    numTransactionKeys:
-      compiledMessage.staticAccountKeys.length +
-      compiledMessage.numAccountKeysFromLookups,
-    accountKeys: compiledMessage.staticAccountKeys,
+    numAccountKeys: compiledMessage.staticAccountKeys.length,
     instructions: compiledMessage.compiledInstructions.map((ix) => {
       return {
         programIdIndex: ix.programIdIndex,
@@ -149,7 +134,6 @@ export function transactionMessageToMultisigTransactionMessageBytes({
       } as MultisigMessageAddressTableLookup;
     }),
   });
-
   return transactionMessageBytes;
 }
 
@@ -157,11 +141,13 @@ export function transactionMessageToMultisigTransactionMessageBytes({
 export async function accountsForTransactionExecute({
   connection,
   vaultPda,
+  vaultMessage,
   message,
   signers,
 }: {
   connection: Connection;
-  message: VaultTransactionMessage;
+  message: MessageV0;
+  vaultMessage: VaultTransactionMessage;
   vaultPda: PublicKey;
   signers: PublicKey[];
 }): Promise<{
@@ -197,14 +183,18 @@ export async function accountsForTransactionExecute({
     })
   );
   // Then add static account keys included into the message.
-  for (const [accountIndex, accountKey] of message.accountKeys.entries()) {
+  for (const [
+    accountIndex,
+    accountKey,
+  ] of message.staticAccountKeys.entries()) {
     accountMetas.push({
       pubkey: accountKey,
-      isWritable: isStaticWritableIndex(message, accountIndex),
+      isWritable: isStaticWritableIndex(vaultMessage, accountIndex),
       // NOTE: vaultPda cannot be marked as signers,
       // because they are PDAs and hence won't have their signatures on the transaction.
       isSigner:
-        isSignerIndex(message, accountIndex) && !accountKey.equals(vaultPda),
+        isSignerIndex(vaultMessage, accountIndex) &&
+        !accountKey.equals(vaultPda),
     });
   }
   // Then add accounts that will be loaded with address lookup tables.

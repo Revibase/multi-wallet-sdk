@@ -62,23 +62,10 @@ impl<'a, 'info> ExecutableTransactionMessage<'a, 'info> {
             })
             .collect::<Result<HashMap<&Pubkey, &AccountInfo>>>()?;
 
-        // CHECK: `account_infos` should exactly match the number of accounts mentioned in the message + additional_signers to meet the threshold.
-        require_eq!(
-            message_account_infos.len(),
-            message.num_all_account_keys(),
-            MultisigError::InvalidNumberOfAccounts
-        );
-
         let mut static_accounts = Vec::new();
 
         // CHECK: `message.account_keys` should come first in `account_infos` and have modifiers expected by the message.
-        for (i, account_key) in message.account_keys.iter().enumerate() {
-            let account_info = &message_account_infos[i];
-            require_keys_eq!(
-                *account_info.key,
-                *account_key,
-                MultisigError::InvalidAccount
-            );
+        for (i, account_info) in message_account_infos.iter().enumerate() {
             // If the account is marked as signer in the message, it must be a signer in the account infos too.
             // Unless it's a vault, as they cannot be passed as signers to `remaining_accounts`,
             // because they are PDA's and can't sign the transaction.
@@ -98,7 +85,7 @@ impl<'a, 'info> ExecutableTransactionMessage<'a, 'info> {
         // CHECK: `message_account_infos` loaded with lookup tables should come after `message.account_keys`,
         //        in the same order and with the same modifiers as listed in lookups.
         // Track where we are in the message account indexes. Start after `message.account_keys`.
-        let mut message_indexes_cursor = message.account_keys.len();
+        let mut message_indexes_cursor = usize::from(message.num_account_keys);
         for lookup in message.address_table_lookups.iter() {
             // This is cheap deserialization, it doesn't allocate/clone space for addresses.
             let lookup_table_data = &lookup_tables
@@ -171,11 +158,7 @@ impl<'a, 'info> ExecutableTransactionMessage<'a, 'info> {
     /// # Arguments
     /// * `vault_seeds` - Seeds for the vault PDA.
     /// * `protected_accounts` - Accounts that must not be passed as writable to the CPI calls to prevent potential reentrancy attacks.
-    pub fn execute_message(
-        self,
-        vault_seeds: &[&[u8]],
-        protected_accounts: &[Pubkey],
-    ) -> Result<()> {
+    pub fn execute_message(self, vault_seeds: &[&[u8]]) -> Result<()> {
         // Second round of type conversion; from Vec<Vec<&[u8]>> to Vec<&[&[u8]]>.
 
         // NOTE: `self.to_instructions_and_accounts()` calls `take()` on
@@ -183,13 +166,6 @@ impl<'a, 'info> ExecutableTransactionMessage<'a, 'info> {
         // references or usages of `self.message` should be made to avoid
         // faulty behavior.
         for (ix, account_infos) in self.to_instructions_and_accounts().iter() {
-            // Make sure we don't pass protected accounts as writable to CPI calls.
-            for account_meta in ix.accounts.iter().filter(|m| m.is_writable) {
-                require!(
-                    !protected_accounts.contains(&account_meta.pubkey),
-                    MultisigError::ProtectedAccount
-                );
-            }
             invoke_signed(&ix, &account_infos, &[vault_seeds])?;
         }
         Ok(())

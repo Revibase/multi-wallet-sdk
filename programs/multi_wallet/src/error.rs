@@ -10,8 +10,10 @@ pub enum MultisigError {
     EmptyMembers,
     #[msg("Too many members, can be up to 65535")]
     TooManyMembers,
-    #[msg("Invalid threshold, must be between 1 and number of members with Vote permission")]
+    #[msg("Invalid threshold, must be between 1 and number of members")]
     InvalidThreshold,
+    #[msg("Threshold must be lower than 10")]
+    ThresholdTooHigh,
     #[msg("TransactionMessage is malformed.")]
     InvalidTransactionMessage,
     #[msg("Number of signers does not meet the minumum threshold")]
@@ -22,8 +24,6 @@ pub enum MultisigError {
     InvalidAccount,
     #[msg("Missing account")]
     MissingAccount,
-    #[msg("Decimals don't match the mint")]
-    DecimalsMismatch,
     #[msg("Account is not owned by Multisig program")]
     IllegalAccountOwner,
     #[msg("Account is protected, it cannot be passed into a CPI as writable")]

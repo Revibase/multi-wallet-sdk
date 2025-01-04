@@ -11,7 +11,7 @@ multi_wallet = "mu1LDWh4VGHhnZHB85s92HNBapj3b9s5DgzTkiAyeKY"
 url = "https://api.apr.dev"
 
 [provider]
-cluster = "https://rpc.blinksfeed.com"
+cluster = "localnet"
 wallet = "~/.config/solana/id.json"
 
 [scripts]

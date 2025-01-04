@@ -9,19 +9,8 @@ pub struct VaultTransactionMessage {
     pub num_writable_signers: u8,
     /// The number of writable non-signer pubkeys in the account_keys vec.
     pub num_writable_non_signers: u8,
-    /// The number of account keys in the transaction message.
-    pub num_transaction_keys: u8,
-    /// Unique account pubkeys (including program IDs) required for execution of the tx.
-    /// The signer pubkeys appear at the beginning of the vec, with writable pubkeys first, and read-only pubkeys following.
-    /// The non-signer pubkeys follow with writable pubkeys first and read-only ones following.
-    /// Program IDs are also stored at the end of the vec along with other non-signer non-writable pubkeys:
-    ///
-    /// ```plaintext
-    /// [pubkey1, pubkey2, pubkey3, pubkey4, pubkey5, pubkey6, pubkey7, pubkey8]
-    ///  |---writable---|  |---readonly---|  |---writable---|  |---readonly---|
-    ///  |------------signers-------------|  |----------non-singers-----------|
-    /// ```
-    pub account_keys: Vec<Pubkey>,
+    /// The number of account keys in the transaction message. (only static, no dynamic)
+    pub num_account_keys: u8,
     /// List of instructions making up the tx.
     pub instructions: Vec<MultisigCompiledInstruction>,
     /// List of address table lookups used to load additional accounts
@@ -38,17 +27,16 @@ impl VaultTransactionMessage {
             .map(|lookup| lookup.writable_indexes.len() + lookup.readonly_indexes.len())
             .sum::<usize>();
 
-        self.account_keys.len() + num_account_keys_from_lookups
+        usize::from(self.num_account_keys) + num_account_keys_from_lookups
     }
 
     /// Returns true if the account at the specified index is a part of static `account_keys` and was requested to be writable.
     pub fn is_static_writable_index(&self, key_index: usize) -> bool {
-        let num_account_keys = self.account_keys.len();
         let num_signers = usize::from(self.num_signers);
         let num_writable_signers = usize::from(self.num_writable_signers);
         let num_writable_non_signers = usize::from(self.num_writable_non_signers);
 
-        if key_index >= num_account_keys {
+        if key_index >= self.num_account_keys.into() {
             // `index` is not a part of static `account_keys`.
             return false;
         }
@@ -74,15 +62,8 @@ impl VaultTransactionMessage {
     }
 
     pub fn validate(&self) -> Result<()> {
-        let num_all_account_keys = self.account_keys.len()
-            + self
-                .address_table_lookups
-                .iter()
-                .map(|lookup| lookup.writable_indexes.len() + lookup.readonly_indexes.len())
-                .sum::<usize>();
-
         require!(
-            usize::from(self.num_signers) <= self.account_keys.len(),
+            self.num_signers <= self.num_account_keys,
             MultisigError::InvalidTransactionMessage
         );
         require!(
@@ -90,24 +71,20 @@ impl VaultTransactionMessage {
             MultisigError::InvalidTransactionMessage
         );
         require!(
-            usize::from(self.num_writable_non_signers)
-                <= self
-                    .account_keys
-                    .len()
-                    .saturating_sub(usize::from(self.num_signers)),
+            self.num_writable_non_signers <= self.num_account_keys.saturating_sub(self.num_signers),
             MultisigError::InvalidTransactionMessage
         );
 
         // Validate that all program ID indices and account indices are within the bounds of the account keys.
         for instruction in &self.instructions {
             require!(
-                usize::from(instruction.program_id_index) < num_all_account_keys,
+                usize::from(instruction.program_id_index) < self.num_all_account_keys(),
                 MultisigError::InvalidTransactionMessage
             );
 
             for account_index in &instruction.account_indexes {
                 require!(
-                    usize::from(*account_index) < num_all_account_keys,
+                    usize::from(*account_index) < self.num_all_account_keys(),
                     MultisigError::InvalidTransactionMessage
                 );
             }
