@@ -3,6 +3,14 @@ use anchor_lang::solana_program::sysvar::instructions as tx_instructions;
 use anchor_lang::{prelude::*, system_program};
 use std::collections::HashSet;
 
+#[derive(AnchorSerialize, AnchorDeserialize)]
+pub enum ConfigAction {
+    AddMembers(Vec<Member>),
+    RemoveMembers(Vec<Pubkey>),
+    SetThreshold(u8),
+    SetMetadata(Option<Pubkey>),
+}
+
 #[account]
 #[derive(Default, Debug)]
 pub struct Member {
@@ -17,22 +25,25 @@ pub struct MultiWallet {
     pub threshold: u8,
     pub bump: u8,
     pub members: Vec<Member>,
+    pub pending_offers: Vec<Pubkey>,
     pub metadata: Option<Pubkey>,
 }
 
 impl MultiWallet {
-    pub fn size(members_length: usize) -> usize {
+    pub fn size(members_length: usize, num_offers: usize) -> usize {
         8  + // anchor account discriminator
         32 + // create_key
         1  + // threshold
         1  + // bump
         4  + // members vector length
         members_length * 34 + // members
+        4 + // bool
+        num_offers * 32 + 
         1 + // option
         32 // metadata
     }
 
-    pub fn durable_nonce_check(instruction_sysvar: &AccountInfo) -> Result<()> {
+    fn durable_nonce_check(instruction_sysvar: &AccountInfo) -> Result<()> {
         let ixn = tx_instructions::load_instruction_at_checked(0, instruction_sysvar)?;
         require!(
             !(ixn.program_id == system_program::ID && ixn.data.first() == Some(&4)),
@@ -41,8 +52,15 @@ impl MultiWallet {
         Ok(())
     }
 
-    pub fn threshold_check(&self, remaining_accounts: &[AccountInfo]) -> Result<()> {
-        let unique_signers: HashSet<_> = remaining_accounts
+
+    pub fn validate(
+        &self,
+        all_accounts: &[AccountInfo],
+        instruction_sysvar: &AccountInfo,
+        skip_pending_offers_check:bool,
+    ) -> Result<()> {
+        Self::durable_nonce_check(instruction_sysvar)?;
+        let unique_signers: HashSet<_> = all_accounts
             .iter()
             .filter(|account| {
                 account.is_signer && self.members.iter().any(|x| x.pubkey.eq(&account.key()))
@@ -54,6 +72,12 @@ impl MultiWallet {
             self.threshold <= unique_signers.len().try_into().unwrap(),
             MultisigError::NotEnoughSigners
         );
+        if !skip_pending_offers_check {
+            require!(
+                self.pending_offers.len() == 0,
+                MultisigError::MultisigIsCurrentlyLocked
+            );
+        }
 
         Ok(())
     }
@@ -62,6 +86,7 @@ impl MultiWallet {
     pub fn realloc_if_needed<'a>(
         multi_wallet: AccountInfo<'a>,
         members_length: usize,
+        num_offers: usize,
         rent_payer: Option<AccountInfo<'a>>,
         system_program: Option<AccountInfo<'a>>,
     ) -> Result<bool> {
@@ -73,7 +98,7 @@ impl MultiWallet {
         );
 
         let current_account_size = multi_wallet.data.borrow().len();
-        let account_size_to_fit_members = MultiWallet::size(members_length);
+        let account_size_to_fit_members = Self::size(members_length, num_offers);
 
         // Check if we need to reallocate space.
         if current_account_size >= account_size_to_fit_members {
@@ -118,11 +143,7 @@ impl MultiWallet {
 
     // Makes sure the multisig state is valid.
     // This must be called at the end of every instruction that modifies a Multisig account.
-    pub fn invariant(&self) -> Result<()> {
-        let Self {
-            threshold, members, ..
-        } = self;
-
+    pub fn check_state_validity(threshold: &u8, members: &Vec<Member>) -> Result<()> {
         require!(
             members.len() <= usize::from(u16::MAX),
             MultisigError::TooManyMembers
@@ -135,7 +156,7 @@ impl MultiWallet {
 
         require!(*threshold > 0, MultisigError::InvalidThreshold);
 
-        require!(*threshold < 10, MultisigError::ThresholdTooHigh);
+        require!(*threshold <= 2, MultisigError::ThresholdTooHigh);
 
         require!(
             usize::from(*threshold) <= members.len(),
@@ -156,6 +177,10 @@ impl MultiWallet {
         self.members.retain(|x| !set.contains(&x.pubkey));
     }
 
+    pub fn set_members(&mut self, new_members: Vec<Member>) {
+        self.members = new_members;
+    }
+
     /// Sets the threshold of an existing multi-wallet.
     pub fn set_threshold(&mut self, new_threshold: u8) {
         self.threshold = new_threshold;
@@ -165,12 +190,17 @@ impl MultiWallet {
     pub fn set_metadata(&mut self, metadata: Option<Pubkey>) {
         self.metadata = metadata;
     }
+
+    pub fn add_offer(&mut self, offer: Pubkey) {
+        self.pending_offers.push(offer);
+    }
+
+    pub fn remove_offer(&mut self, offer:Pubkey) {
+        self.pending_offers.retain(|x| !x.eq(&offer));
+    }
+
+    pub fn clear_pending_offers<'info>(&mut self) {
+     self.pending_offers.clear();
+    }
 }
 
-#[derive(AnchorSerialize, AnchorDeserialize)]
-pub enum ConfigAction {
-    AddMembers(Vec<Member>),
-    RemoveMembers(Vec<Pubkey>),
-    SetThreshold(u8),
-    SetMetadata(Option<Pubkey>),
-}

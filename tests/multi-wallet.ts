@@ -13,6 +13,7 @@ import {
   VersionedTransaction,
 } from "@solana/web3.js";
 import { BN } from "bn.js";
+import { expect } from "chai";
 import { MultiWallet } from "../target/types/multi_wallet";
 import {
   accountsForTransactionExecute,
@@ -81,7 +82,17 @@ describe("multi_wallet", () => {
     tx.sign(payer);
     const sig = await sendAndConfirmTransaction(connection, tx, [payer]);
     await connection.confirmTransaction(sig);
-    console.log(await program.account.multiWallet.fetch(multi_wallet));
+    // Validation
+    const accountData = await program.account.multiWallet.fetch(multi_wallet);
+    expect(accountData.createKey.toBase58()).equal(wallet.publicKey.toBase58());
+    expect(accountData.members.length).equal(1); // Only creator is a member
+    expect(accountData.threshold).equal(1); // Single-sig wallet
+    expect(accountData.metadata.toBase58()).equal(
+      "9n6LHACaLSjm6dyQ1unbP4y4Azigq5xGuzRCG2XRZf9v"
+    );
+
+    const vaultBalance = await connection.getBalance(multi_wallet_vault);
+    expect(vaultBalance).equal(LAMPORTS_PER_SOL * 0.005);
   });
 
   it("Set Owner to payer!", async () => {
@@ -100,7 +111,12 @@ describe("multi_wallet", () => {
       .signers([wallet, payer])
       .rpc();
     console.log("Your transaction signature", tx);
-    console.log(await program.account.multiWallet.fetch(multi_wallet));
+    const accountData = await program.account.multiWallet.fetch(multi_wallet);
+    expect(accountData.members.length).equal(2); // Creator + Payer
+    expect(accountData.members[1].pubkey.toBase58()).equal(
+      payer.publicKey.toBase58()
+    );
+    expect(accountData.threshold).equal(1); // Threshold should remain unchanged
   });
 
   it("Set Owner to none!", async () => {
@@ -118,99 +134,14 @@ describe("multi_wallet", () => {
       .signers([payer, wallet])
       .rpc();
     console.log("Your transaction signature", tx);
-    console.log(await program.account.multiWallet.fetch(multi_wallet));
+    const accountData = await program.account.multiWallet.fetch(multi_wallet);
+    expect(accountData.members.length).equal(1); // Only creator remains
+    expect(accountData.members[0].pubkey.toBase58()).equal(
+      wallet.publicKey.toBase58()
+    );
   });
 
-  it("Wrap transfer transaction!", async () => {
-    // const test = Keypair.generate();
-    // const ix = SystemProgram.transfer({
-    //   fromPubkey: payer.publicKey,
-    //   toPubkey: multi_wallet_vault,
-    //   lamports: LAMPORTS_PER_SOL * 0.5,
-    // });
-    // const tx = new Transaction().add(ix);
-    // await sendAndConfirmTransaction(connection, tx, [payer]);
-    // const transferIx = SystemProgram.transfer({
-    //   fromPubkey: multi_wallet_vault,
-    //   toPubkey: test.publicKey,
-    //   lamports: LAMPORTS_PER_SOL * 0.3,
-    // });
-    // const transferTx = new TransactionMessage({
-    //   instructions: [transferIx],
-    //   payerKey: test.publicKey,
-    //   recentBlockhash: (await connection.getLatestBlockhash()).blockhash,
-    // });
-    // const transactionMessageBytes =
-    //   transactionMessageToMultisigTransactionMessageBytes({
-    //     message: transferTx,
-    //   });
-    // const { accountMetas, lookupTableAccounts } =
-    //   await accountsForTransactionExecute({
-    //     connection: connection,
-    //     message: vaultTransactionMessageBeet.deserialize(
-    //       transactionMessageBytes
-    //     )[0],
-    //     vaultPda: multi_wallet_vault,
-    //     signers: [wallet.publicKey],
-    //   });
-    // const vaultTransactionExecuteIx = await program.methods
-    //   .vaultTransactionExecute(0, transactionMessageBytes)
-    //   .accountsPartial({ multiWallet: multi_wallet })
-    //   .remainingAccounts(accountMetas)
-    //   .instruction();
-    // const transaction = new VersionedTransaction(
-    //   new TransactionMessage({
-    //     instructions: [vaultTransactionExecuteIx],
-    //     payerKey: wallet.publicKey,
-    //     recentBlockhash: (await connection.getLatestBlockhash()).blockhash,
-    //   }).compileToV0Message(lookupTableAccounts)
-    // );
-    // transaction.sign([wallet, test]);
-    // const txSig = await connection.sendTransaction(transaction);
-    // console.log(txSig);
-    // await connection.confirmTransaction(txSig);
-    // console.log(await connection.getAccountInfo(multi_wallet_vault));
-  });
-  // const nonceKeypair = Keypair.generate();
-  // it("Create Durable Nonce", async () => {
-  //   const tx = new Transaction();
-
-  //   // the fee payer can be any account
-  //   tx.feePayer = payer.publicKey;
-
-  //   // to create the nonce account, you can use fetch the recent blockhash
-  //   // or use a nonce from a different, pre-existing nonce account
-  //   tx.recentBlockhash = (await connection.getLatestBlockhash()).blockhash;
-
-  //   tx.add(
-  //     // create system account with the minimum amount needed for rent exemption.
-  //     // NONCE_ACCOUNT_LENGTH is the space a nonce account takes
-  //     SystemProgram.createAccount({
-  //       fromPubkey: payer.publicKey,
-  //       newAccountPubkey: nonceKeypair.publicKey,
-  //       lamports: 0.0015 * LAMPORTS_PER_SOL,
-  //       space: NONCE_ACCOUNT_LENGTH,
-  //       programId: SystemProgram.programId,
-  //     }),
-  //     // initialise nonce with the created nonceKeypair's pubkey as the noncePubkey
-  //     // also specify the authority of the nonce account
-  //     SystemProgram.nonceInitialize({
-  //       noncePubkey: nonceKeypair.publicKey,
-  //       authorizedPubkey: payer.publicKey,
-  //     })
-  //   );
-
-  //   // sign the transaction with both the nonce keypair and the authority keypair
-  //   tx.sign(nonceKeypair, payer);
-
-  //   // send the transaction
-  //   const sig = await sendAndConfirmRawTransaction(
-  //     connection,
-  //     tx.serialize({ requireAllSignatures: false })
-  //   );
-  //   console.log("Nonce initiated: ", sig);
-  // });
-
+  const test = Keypair.generate();
   it("Wrap transaction!", async () => {
     const ix = SystemProgram.transfer({
       fromPubkey: payer.publicKey,
@@ -220,7 +151,6 @@ describe("multi_wallet", () => {
     const tx = new Transaction().add(ix);
     await sendAndConfirmTransaction(connection, tx, [payer]);
 
-    const test = Keypair.generate();
     const transferIx1 = SystemProgram.transfer({
       fromPubkey: multi_wallet_vault,
       toPubkey: wallet.publicKey,
@@ -232,7 +162,10 @@ describe("multi_wallet", () => {
       lamports: LAMPORTS_PER_SOL * 0.001,
     });
     const changeConfigIx = await program.methods
-      .changeConfig([{ addMembers: [[{ pubkey: test.publicKey, label: 0 }]] }])
+      .changeConfig([
+        { addMembers: [[{ pubkey: test.publicKey, label: 0 }]] },
+        { setThreshold: [2] },
+      ])
       .accountsPartial({
         multiWallet: multi_wallet,
         payer: multi_wallet_vault,
@@ -281,6 +214,327 @@ describe("multi_wallet", () => {
     const txSig = await connection.sendTransaction(transaction);
 
     await connection.confirmTransaction(txSig);
-    console.log(await program.account.multiWallet.fetch(multi_wallet));
+    const accountData = await program.account.multiWallet.fetch(multi_wallet);
+
+    expect(accountData.members.length).equal(2); // wallet + test
+    expect(accountData.threshold).equal(2);
+  });
+
+  it("Initiates an escrow as proposer using native sol and closing the escrow as proposer", async () => {
+    const [native_vault] = PublicKey.findProgramAddressSync(
+      [
+        Buffer.from("escrow"),
+        wallet.publicKey.toBuffer(),
+        new anchor.BN(1).toArrayLike(Buffer, "le", 8),
+        Buffer.from("vault"),
+      ],
+      program.programId
+    );
+    const tx = await program.methods
+      .initiateEscrowAsNonOwner(
+        new anchor.BN(1),
+        [
+          { pubkey: payer.publicKey, label: 1 },
+          { pubkey: wallet.publicKey, label: 0 },
+        ],
+        new anchor.BN(LAMPORTS_PER_SOL * 0.001),
+        2
+      )
+      .accountsPartial({
+        member: wallet.publicKey,
+        multiWallet: multi_wallet,
+        payer: payer.publicKey,
+        escrowVault: native_vault,
+        escrowTokenVault: null,
+        payerTokenAccount: null,
+        mint: null,
+        tokenProgram: null,
+      })
+      .signers([payer, wallet])
+      .rpc();
+
+    console.log("Initiated escrow as proposer:", tx);
+
+    const [escrow] = PublicKey.findProgramAddressSync(
+      [
+        Buffer.from("escrow"),
+        wallet.publicKey.toBuffer(),
+        new anchor.BN(1).toArrayLike(Buffer, "le", 8),
+      ],
+      program.programId
+    );
+
+    const escrowData = await program.account.escrow.fetch(escrow);
+    expect(escrowData.identifier.toNumber()).equal(1);
+    expect(escrowData.recipient.amount.toNumber()).equal(
+      LAMPORTS_PER_SOL * 0.001
+    );
+    expect(escrowData.proposer.toBase58()).equal(payer.publicKey.toBase58());
+    const tx2 = await program.methods
+      .cancelEscrowAsProposer()
+      .accountsPartial({
+        escrow,
+        proposer: payer.publicKey,
+        escrowVault: native_vault,
+        escrowTokenVault: null,
+        proposerTokenAccount: null,
+        mint: null,
+        tokenProgram: null,
+      })
+      .signers([payer])
+      .rpc();
+
+    console.log("Close escrow as proposer:", tx2);
+  });
+
+  it("Initiates an escrow as proposer using native sol and closing the escrow as owner", async () => {
+    const [native_vault] = PublicKey.findProgramAddressSync(
+      [
+        Buffer.from("escrow"),
+        wallet.publicKey.toBuffer(),
+        new anchor.BN(1).toArrayLike(Buffer, "le", 8),
+        Buffer.from("vault"),
+      ],
+      program.programId
+    );
+    const tx = await program.methods
+      .initiateEscrowAsNonOwner(
+        new anchor.BN(1),
+        [
+          { pubkey: payer.publicKey, label: null },
+          { pubkey: wallet.publicKey, label: 0 },
+        ],
+        new anchor.BN(LAMPORTS_PER_SOL * 0.001),
+        2
+      )
+      .accountsPartial({
+        member: wallet.publicKey,
+        multiWallet: multi_wallet,
+        payer: payer.publicKey,
+        escrowVault: native_vault,
+        escrowTokenVault: null,
+        payerTokenAccount: null,
+        mint: null,
+        tokenProgram: null,
+      })
+      .signers([payer, wallet])
+      .rpc();
+
+    console.log("Initiated escrow as proposer:", tx);
+    const [escrow] = PublicKey.findProgramAddressSync(
+      [
+        Buffer.from("escrow"),
+        wallet.publicKey.toBuffer(),
+        new anchor.BN(1).toArrayLike(Buffer, "le", 8),
+      ],
+      program.programId
+    );
+
+    const tx2 = await program.methods
+      .cancelEscrowAsOwner()
+      .accountsPartial({
+        escrow,
+        proposer: payer.publicKey,
+        escrowVault: native_vault,
+        escrowTokenVault: null,
+        proposerTokenAccount: null,
+        mint: null,
+        tokenProgram: null,
+      })
+      .signers([wallet, test])
+      .remainingAccounts([
+        { pubkey: wallet.publicKey, isSigner: true, isWritable: false },
+        { pubkey: test.publicKey, isSigner: true, isWritable: false },
+      ])
+      .rpc();
+
+    console.log("Closed escrow as owner:", tx2);
+  });
+
+  it("2 x Initiates an escrow as proposer using native sol and accepting escrow as owner then cancelling any pending escrow", async () => {
+    const getRandomId = () => Math.random() * 1000000;
+    const getEscrow = (randomId: number) =>
+      PublicKey.findProgramAddressSync(
+        [
+          Buffer.from("escrow"),
+          wallet.publicKey.toBuffer(),
+          new anchor.BN(randomId).toArrayLike(Buffer, "le", 8),
+        ],
+        program.programId
+      )[0];
+    const getNativeVault = (randomId: number) =>
+      PublicKey.findProgramAddressSync(
+        [
+          Buffer.from("escrow"),
+          wallet.publicKey.toBuffer(),
+          new anchor.BN(randomId).toArrayLike(Buffer, "le", 8),
+          Buffer.from("vault"),
+        ],
+        program.programId
+      )[0];
+    const initiateEscrow = async (randomId: number) => {
+      const native_vault = getNativeVault(randomId);
+      const tx = await program.methods
+        .initiateEscrowAsNonOwner(
+          new anchor.BN(randomId),
+          [
+            { pubkey: payer.publicKey, label: null },
+            { pubkey: wallet.publicKey, label: 0 },
+          ],
+          new anchor.BN(LAMPORTS_PER_SOL * 0.001),
+          2
+        )
+        .accountsPartial({
+          member: wallet.publicKey,
+          multiWallet: multi_wallet,
+          payer: payer.publicKey,
+          escrowVault: native_vault,
+          escrowTokenVault: null,
+          payerTokenAccount: null,
+          mint: null,
+          tokenProgram: null,
+        })
+        .signers([payer, wallet])
+        .rpc();
+
+      console.log("Initiated escrow as proposer:", tx);
+    };
+    let id = getRandomId();
+    let id2 = getRandomId();
+    await initiateEscrow(id);
+    await initiateEscrow(id2);
+
+    const tx2 = await program.methods
+      .executeEscrowAsOwner()
+      .accountsPartial({
+        escrow: getEscrow(id),
+        recipient: wallet.publicKey,
+        escrowVault: getNativeVault(id),
+        escrowTokenVault: null,
+        recipientTokenAccount: null,
+        mint: null,
+        tokenProgram: null,
+      })
+      .signers([wallet, test])
+      .remainingAccounts([
+        { pubkey: test.publicKey, isSigner: true, isWritable: false },
+      ])
+      .rpc();
+
+    console.log("Accepted escrow as owner:", tx2);
+    const tx3 = await program.methods
+      .cancelEscrowAsProposer()
+      .accountsPartial({
+        escrow: getEscrow(id2),
+        proposer: payer.publicKey,
+        escrowVault: getNativeVault(id2),
+        escrowTokenVault: null,
+        proposerTokenAccount: null,
+        mint: null,
+        tokenProgram: null,
+      })
+      .signers([payer])
+      .rpc();
+
+    console.log("Close escrow as proposer:", tx3);
+  });
+
+  it("Initiates an escrow as owner using native sol and closing the escrow as owner", async () => {
+    const tx = await program.methods
+      .initiateEscrowAsOwner(
+        new anchor.BN(1),
+        wallet.publicKey,
+        new anchor.BN(LAMPORTS_PER_SOL * 0.001),
+        null
+      )
+      .accountsPartial({
+        multiWallet: multi_wallet,
+        payer: wallet.publicKey,
+      })
+      .signers([wallet, payer])
+      .remainingAccounts([
+        { pubkey: payer.publicKey, isSigner: true, isWritable: false },
+      ])
+      .rpc();
+
+    console.log("Initiated escrow as owner:", tx);
+
+    const [escrow] = PublicKey.findProgramAddressSync(
+      [
+        Buffer.from("escrow"),
+        wallet.publicKey.toBuffer(),
+        new anchor.BN(1).toArrayLike(Buffer, "le", 8),
+      ],
+      program.programId
+    );
+    const tx2 = await program.methods
+      .cancelEscrowAsOwner()
+      .accountsPartial({
+        escrow,
+        proposer: wallet.publicKey,
+        escrowVault: null,
+        escrowTokenVault: null,
+        proposerTokenAccount: null,
+        mint: null,
+        tokenProgram: null,
+      })
+      .signers([wallet, payer])
+      .remainingAccounts([
+        { pubkey: wallet.publicKey, isSigner: true, isWritable: false },
+        { pubkey: payer.publicKey, isSigner: true, isWritable: false },
+      ])
+      .rpc();
+
+    console.log("Closed escrow as proposer:", tx2);
+  });
+
+  it("Initiates an escrow as owner using native sol and accepting the escrow as proposer", async () => {
+    const tx = await program.methods
+      .initiateEscrowAsOwner(
+        new anchor.BN(1),
+        wallet.publicKey,
+        new anchor.BN(LAMPORTS_PER_SOL * 0.001),
+        null
+      )
+      .accountsPartial({
+        multiWallet: multi_wallet,
+        payer: wallet.publicKey,
+      })
+      .signers([wallet, payer])
+      .remainingAccounts([
+        { pubkey: payer.publicKey, isSigner: true, isWritable: false },
+      ])
+      .rpc();
+
+    console.log("Initiated escrow as owner:", tx);
+
+    const [escrow] = PublicKey.findProgramAddressSync(
+      [
+        Buffer.from("escrow"),
+        wallet.publicKey.toBuffer(),
+        new anchor.BN(1).toArrayLike(Buffer, "le", 8),
+      ],
+      program.programId
+    );
+    const tx2 = await program.methods
+      .executeEscrowAsNonOwner(
+        [
+          { pubkey: test.publicKey, label: null },
+          { pubkey: wallet.publicKey, label: 0 },
+        ],
+        2
+      )
+      .accountsPartial({
+        escrow,
+        payer: payer.publicKey,
+        recipient: wallet.publicKey,
+        recipientTokenAccount: null,
+        payerTokenAccount: null,
+        mint: null,
+        tokenProgram: null,
+      })
+      .signers([payer])
+      .rpc();
+    console.log("Accepted escrow as proposer:", tx2);
   });
 });

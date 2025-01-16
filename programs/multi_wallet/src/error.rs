@@ -2,30 +2,64 @@ use anchor_lang::prelude::*;
 
 #[error_code]
 pub enum MultisigError {
-    #[msg("Durable nonce is not allowed")]
+    #[msg("Durable nonce detected. Durable nonce is not allowed for this transaction.")]
     DurableNonceDetected,
-    #[msg("Found multiple members with the same pubkey")]
+
+    #[msg("Duplicate public keys found in the members array. Each member must have a unique public key.")]
     DuplicateMember,
-    #[msg("Members array is empty")]
+
+    #[msg("The members array cannot be empty. Add at least one member.")]
     EmptyMembers,
-    #[msg("Too many members, can be up to 65535")]
+
+    #[msg("Too many members specified. A maximum of 65,535 members is allowed.")]
     TooManyMembers,
-    #[msg("Invalid threshold, must be between 1 and number of members")]
+
+    #[msg("Invalid threshold specified. The threshold must be between 1 and the total number of members.")]
     InvalidThreshold,
-    #[msg("Threshold must be lower than 10")]
+
+    #[msg("Threshold exceeds the maximum allowed limit of 2. Please choose a lower value.")]
     ThresholdTooHigh,
-    #[msg("TransactionMessage is malformed.")]
+
+    #[msg("The provided TransactionMessage is malformed or improperly formatted.")]
     InvalidTransactionMessage,
-    #[msg("Number of signers does not meet the minumum threshold")]
+
+    #[msg(
+        "Insufficient signers. The number of signers must meet or exceed the minimum threshold."
+    )]
     NotEnoughSigners,
-    #[msg("Wrong number of accounts provided")]
+
+    #[msg("Incorrect number of accounts provided. Verify the account count matches the expected number.")]
     InvalidNumberOfAccounts,
-    #[msg("Invalid account provided")]
+
+    #[msg("One or more accounts provided are invalid. Ensure all accounts meet the requirements.")]
     InvalidAccount,
-    #[msg("Missing account")]
+
+    #[msg("Required account is missing. Ensure all necessary accounts are included.")]
     MissingAccount,
-    #[msg("Account is not owned by Multisig program")]
+
+    #[msg("Account is not owned by the Multisig program. Only accounts under the Multisig program can be used.")]
     IllegalAccountOwner,
-    #[msg("Account is protected, it cannot be passed into a CPI as writable")]
-    ProtectedAccount,
+
+    #[msg(
+        "The Multisig must be unlocked before performing this operation. Unlock it and try again."
+    )]
+    MultisigIsCurrentlyLocked,
+
+    #[msg("The escrow account doesn't exist.")]
+    EscrowDoesNotExist,
+
+    #[msg("The members array cannot have a length of one. Add an additional member.")]
+    MissingOwner,
+
+    #[msg("The proposer must match the account stated in the escrow.")]
+    InvalidEscrowProposer,
+
+    #[msg("The recipient nust match the account stated in the escrow.")]
+    InvalidEscrowRecipient,
+
+    #[msg("You require at least one member from the Multisig to initiate an escrow.")]
+    RequiresAtLeastOneMember,
+
+    #[msg("You do not have permission to accept this offer.")]
+    UnauthorisedToAcceptEscrowOffer,
 }
