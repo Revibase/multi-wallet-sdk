@@ -1,13 +1,13 @@
+use std::collections::HashMap;
+use std::convert::From;
+
 use anchor_lang::prelude::*;
 use anchor_lang::solana_program::address_lookup_table;
 use anchor_lang::solana_program::address_lookup_table::state::AddressLookupTable;
 use anchor_lang::solana_program::instruction::Instruction;
 use anchor_lang::solana_program::program::invoke_signed;
-use std::collections::HashMap;
-use std::convert::From;
 
-use crate::error::MultisigError;
-use crate::state::VaultTransactionMessage;
+use crate::{state::*, MultisigError};
 
 /// Sanitized and validated combination of a `MsTransactionMessage` and `AccountInfo`s it references.
 pub struct ExecutableTransactionMessage<'a, 'info> {
@@ -62,12 +62,25 @@ impl<'a, 'info> ExecutableTransactionMessage<'a, 'info> {
             })
             .collect::<Result<HashMap<&Pubkey, &AccountInfo>>>()?;
 
+        // CHECK: `account_infos` should exactly match the number of accounts mentioned in the message.
+        require_eq!(
+            message_account_infos.len(),
+            message.num_all_account_keys(),
+            MultisigError::InvalidNumberOfAccounts
+        );
+
         let mut static_accounts = Vec::new();
 
         // CHECK: `message.account_keys` should come first in `account_infos` and have modifiers expected by the message.
-        for (i, account_info) in message_account_infos.iter().enumerate() {
+        for (i, account_key) in message.account_keys.iter().enumerate() {
+            let account_info = &message_account_infos[i];
+            require_keys_eq!(
+                *account_info.key,
+                *account_key,
+                MultisigError::InvalidAccount
+            );
             // If the account is marked as signer in the message, it must be a signer in the account infos too.
-            // Unless it's a vault, as they cannot be passed as signers to `remaining_accounts`,
+            // Unless it's a vault PDA, as they cannot be passed as signers to `remaining_accounts`,
             // because they are PDA's and can't sign the transaction.
             if message.is_signer_index(i) && account_info.key != vault_pubkey {
                 require!(account_info.is_signer, MultisigError::InvalidAccount);
@@ -85,7 +98,7 @@ impl<'a, 'info> ExecutableTransactionMessage<'a, 'info> {
         // CHECK: `message_account_infos` loaded with lookup tables should come after `message.account_keys`,
         //        in the same order and with the same modifiers as listed in lookups.
         // Track where we are in the message account indexes. Start after `message.account_keys`.
-        let mut message_indexes_cursor = usize::from(message.num_account_keys);
+        let mut message_indexes_cursor = message.account_keys.len();
         for lookup in message.address_table_lookups.iter() {
             // This is cheap deserialization, it doesn't allocate/clone space for addresses.
             let lookup_table_data = &lookup_tables
@@ -157,10 +170,7 @@ impl<'a, 'info> ExecutableTransactionMessage<'a, 'info> {
     /// Executes all instructions in the message via CPI calls.
     /// # Arguments
     /// * `vault_seeds` - Seeds for the vault PDA.
-    /// * `protected_accounts` - Accounts that must not be passed as writable to the CPI calls to prevent potential reentrancy attacks.
     pub fn execute_message(self, vault_seeds: &[&[u8]]) -> Result<()> {
-        // Second round of type conversion; from Vec<Vec<&[u8]>> to Vec<&[&[u8]]>.
-
         // NOTE: `self.to_instructions_and_accounts()` calls `take()` on
         // `self.message.instructions`, therefore after this point no more
         // references or usages of `self.message` should be made to avoid

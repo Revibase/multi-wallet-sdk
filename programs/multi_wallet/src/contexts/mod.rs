@@ -4,6 +4,15 @@ pub use create_multi_wallet::*;
 pub mod change_config;
 pub use change_config::*;
 
+pub mod transaction_buffer_create;
+pub use transaction_buffer_create::*;
+
+pub mod transaction_buffer_extend;
+pub use transaction_buffer_extend::*;
+
+pub mod transaction_buffer_close;
+pub use transaction_buffer_close::*;
+
 pub mod vault_transaction_execute;
 pub use vault_transaction_execute::*;
 

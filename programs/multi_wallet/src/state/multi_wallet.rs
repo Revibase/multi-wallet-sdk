@@ -11,15 +11,47 @@ pub enum ConfigAction {
     SetMetadata(Option<Pubkey>),
 }
 
-#[account]
-#[derive(Default, Debug)]
+
+#[derive(AnchorDeserialize, AnchorSerialize, InitSpace, Eq, PartialEq, Clone, Hash)]
 pub struct Member {
     pub pubkey: Pubkey,
-    pub label: Option<u8>,
+    pub permissions: Option<Permissions>,
+}
+
+#[derive(Clone, Copy)]
+pub enum Permission {
+    InitiateTransaction = 1 << 0,
+    VoteTransaction = 1 << 1,
+    ExecuteTransaction = 1 << 2,
+    InitiateEscrow = 1 << 3,
+    VoteEscrow = 1 << 4,
+    ExecuteEscrow = 1 << 5,
+}
+
+/// Bitmask for permissions.
+#[derive(
+    AnchorSerialize, AnchorDeserialize, InitSpace, Eq, PartialEq, Clone, Copy, Default, Debug,Hash
+)]
+pub struct Permissions {
+    pub mask: u8,
+}
+
+impl Permissions {
+    /// Currently unused.
+    pub fn from_vec(permissions: &[Permission]) -> Self {
+        let mut mask = 0;
+        for permission in permissions {
+            mask |= *permission as u8;
+        }
+        Self { mask }
+    }
+
+    pub fn has(&self, permission: Permission) -> bool {
+        self.mask & (permission as u8) != 0
+    }
 }
 
 #[account]
-#[derive(Default, Debug)]
 pub struct MultiWallet {
     pub create_key: Pubkey,
     pub threshold: u8,
@@ -27,6 +59,17 @@ pub struct MultiWallet {
     pub members: Vec<Member>,
     pub pending_offers: Vec<Pubkey>,
     pub metadata: Option<Pubkey>,
+}
+
+ // Helper struct to track permission counts
+#[derive(Default)]
+struct PermissionCounts {
+    escrow_voters: usize,
+    transaction_voters: usize,
+    transaction_initiators: usize,
+    escrow_initiators: usize,
+    transaction_executors: usize,
+    escrow_executors: usize,
 }
 
 impl MultiWallet {
@@ -43,7 +86,7 @@ impl MultiWallet {
         32 // metadata
     }
 
-    fn durable_nonce_check(instruction_sysvar: &AccountInfo) -> Result<()> {
+    pub fn durable_nonce_check(instruction_sysvar: &AccountInfo) -> Result<()> {
         let ixn = tx_instructions::load_instruction_at_checked(0, instruction_sysvar)?;
         require!(
             !(ixn.program_id == system_program::ID && ixn.data.first() == Some(&4)),
@@ -53,33 +96,18 @@ impl MultiWallet {
     }
 
 
-    pub fn validate(
+    pub fn get_unique_signers(
         &self,
         all_accounts: &[AccountInfo],
-        instruction_sysvar: &AccountInfo,
-        skip_pending_offers_check:bool,
-    ) -> Result<()> {
-        Self::durable_nonce_check(instruction_sysvar)?;
-        let unique_signers: HashSet<_> = all_accounts
+    ) -> Result<HashSet<&Member>> {
+       
+        let unique_signers: HashSet<_> = self.members
             .iter()
-            .filter(|account| {
-                account.is_signer && self.members.iter().any(|x| x.pubkey.eq(&account.key()))
+            .filter(|member| {
+                all_accounts.iter().any(|x| x.is_signer && x.key().eq(&member.pubkey))
             })
-            .map(|account| account.key)
             .collect();
-
-        require!(
-            self.threshold <= unique_signers.len().try_into().unwrap(),
-            MultisigError::NotEnoughSigners
-        );
-        if !skip_pending_offers_check {
-            require!(
-                self.pending_offers.len() == 0,
-                MultisigError::MultisigIsCurrentlyLocked
-            );
-        }
-
-        Ok(())
+        Ok(unique_signers)
     }
 
     /// Returns `true` if the account was reallocated.
@@ -98,20 +126,20 @@ impl MultiWallet {
         );
 
         let current_account_size = multi_wallet.data.borrow().len();
-        let account_size_to_fit_members = Self::size(members_length, num_offers);
+        let new_account_size = Self::size(members_length, num_offers);
 
         // Check if we need to reallocate space.
-        if current_account_size >= account_size_to_fit_members {
+        if current_account_size >= new_account_size {
             return Ok(false);
         }
 
         // Reallocate more space.
-        AccountInfo::realloc(&multi_wallet, account_size_to_fit_members, false)?;
+        AccountInfo::realloc(&multi_wallet, new_account_size, false)?;
 
         // If more lamports are needed, transfer them to the account.
         let rent_exempt_lamports = Rent::get()
             .unwrap()
-            .minimum_balance(account_size_to_fit_members)
+            .minimum_balance(new_account_size)
             .max(1);
         let top_up_lamports =
             rent_exempt_lamports.saturating_sub(multi_wallet.to_account_info().lamports());
@@ -144,28 +172,82 @@ impl MultiWallet {
     // Makes sure the multisig state is valid.
     // This must be called at the end of every instruction that modifies a Multisig account.
     pub fn check_state_validity(threshold: &u8, members: &Vec<Member>) -> Result<()> {
+
+        let member_count = members.len();
+        require!(member_count > 0, MultisigError::EmptyMembers);
+        require!(member_count <= usize::from(u16::MAX), MultisigError::TooManyMembers);
+        require!(*threshold > 0, MultisigError::InvalidThreshold);
+        require!(*threshold as usize <= member_count, MultisigError::InvalidThreshold);
+
+        let mut seen = std::collections::HashSet::new();
+        let mut permission_counts = PermissionCounts::default();
+
+        for member in members {
+            // Check for duplicate public keys
+            if !seen.insert(&member.pubkey) {
+                return Err(MultisigError::DuplicateMember.into());
+            }
+
+            // Count permissions
+            if let Some(permissions) = &member.permissions {
+                if permissions.has(Permission::VoteEscrow) {
+                    permission_counts.escrow_voters += 1;
+                }
+                if permissions.has(Permission::VoteTransaction) {
+                    permission_counts.transaction_voters += 1;
+                }
+                if permissions.has(Permission::InitiateTransaction) {
+                    permission_counts.transaction_initiators += 1;
+                }
+                if permissions.has(Permission::InitiateEscrow) {
+                    permission_counts.escrow_initiators += 1;
+                }
+                if permissions.has(Permission::ExecuteTransaction) {
+                    permission_counts.transaction_executors += 1;
+                }
+                if permissions.has(Permission::ExecuteEscrow) {
+                    permission_counts.escrow_executors += 1;
+                }
+            }
+        }
+
+        // Validate counts against the threshold
         require!(
-            members.len() <= usize::from(u16::MAX),
-            MultisigError::TooManyMembers
+            *threshold as usize <= 2,
+            MultisigError::ThresholdTooHigh
         );
 
-        require!(members.len() > 0, MultisigError::EmptyMembers);
-
-        let has_duplicates = members.windows(2).any(|win| win[0].pubkey == win[1].pubkey);
-        require!(!has_duplicates, MultisigError::DuplicateMember);
-
-        require!(*threshold > 0, MultisigError::InvalidThreshold);
-
-        require!(*threshold <= 2, MultisigError::ThresholdTooHigh);
-
         require!(
-            usize::from(*threshold) <= members.len(),
-            MultisigError::InvalidThreshold
+            *threshold as usize <= permission_counts.transaction_voters,
+            MultisigError::InsufficientSignersWithVotePermission
+        );
+        require!(
+            *threshold as usize <= permission_counts.escrow_voters,
+            MultisigError::InsufficientSignersWithVotePermission
+        );
+
+
+        // Ensure at least one member can initiate and execute transactions or escrows
+        require!(
+            permission_counts.transaction_initiators >= 1,
+            MultisigError::InsufficientSignerWithInitiatePermission
+        );
+        require!(
+            permission_counts.escrow_initiators >= 1,
+            MultisigError::InsufficientSignerWithInitiatePermission
+        );
+        require!(
+            permission_counts.transaction_executors >= 1,
+            MultisigError::InsufficientSignerWithExecutePermission
+        );
+        require!(
+            permission_counts.escrow_executors >= 1,
+            MultisigError::InsufficientSignerWithExecutePermission
         );
 
         Ok(())
     }
-
+    
     /// Add `new_member` to the multisig `members` vec and sort the vec.
     pub fn add_members(&mut self, new_members: Vec<Member>) {
         self.members.extend(new_members);

@@ -20,7 +20,6 @@ pub struct Recipient {
 }
 
 #[account]
-#[derive(Default, Debug)]
 pub struct Escrow {
     pub create_key: Pubkey,
     pub identifier: u64,

@@ -57,9 +57,27 @@ pub enum MultisigError {
     #[msg("The recipient nust match the account stated in the escrow.")]
     InvalidEscrowRecipient,
 
-    #[msg("You require at least one member from the Multisig to initiate an escrow.")]
-    RequiresAtLeastOneMember,
+    #[msg("Require at least one signer to have the execute permission.")]
+    InsufficientSignerWithExecutePermission,
+
+    #[msg("Require at least one signer to have the initiate permission.")]
+    InsufficientSignerWithInitiatePermission,
+
+    #[msg("Require threshold to be lesser than or equal to the number of members with vote permission.")]
+    InsufficientSignersWithVotePermission,
 
     #[msg("You do not have permission to accept this offer.")]
     UnauthorisedToAcceptEscrowOffer,
+
+    #[msg("Only the creator of the transaction buffer have permission to modify the buffer.")]
+    UnauthorisedToModifyBuffer,
+
+    #[msg("Final message buffer hash doesnt match the expected hash")]
+    FinalBufferHashMismatch,
+
+    #[msg("Final buffer size cannot exceed 4000 bytes")]
+    FinalBufferSizeExceeded,
+
+    #[msg("Final buffer size mismatch")]
+    FinalBufferSizeMismatch,
 }

@@ -1,6 +1,7 @@
 import * as anchor from "@coral-xyz/anchor";
 import { Program } from "@coral-xyz/anchor";
 import { SYSTEM_PROGRAM_ID } from "@coral-xyz/anchor/dist/cjs/native/system";
+import { sha256 } from "@noble/hashes/sha256";
 import {
   Connection,
   Keypair,
@@ -20,8 +21,8 @@ import {
   transactionMessageSerialize,
   transactionMessageToCompileMessage,
 } from "../utils";
-import { vaultTransactionMessageBeet } from "../utils/types/VaultTransactionMessage";
-
+import { Permission, Permissions } from "../utils/types/permissions";
+import { transactionMessageBeet } from "../utils/types/transactionMessage";
 describe("multi_wallet", () => {
   // Configure the client to use the local cluster.
   anchor.setProvider(anchor.AnchorProvider.env());
@@ -62,7 +63,7 @@ describe("multi_wallet", () => {
       .create(
         {
           pubkey: wallet.publicKey,
-          label: 15,
+          permissions: Permissions.all(),
         },
         new PublicKey("9n6LHACaLSjm6dyQ1unbP4y4Azigq5xGuzRCG2XRZf9v")
       )
@@ -98,7 +99,23 @@ describe("multi_wallet", () => {
   it("Set Owner to payer!", async () => {
     const tx = await program.methods
       .changeConfig([
-        { addMembers: [[{ pubkey: payer.publicKey, label: null }]] },
+        {
+          addMembers: [
+            [
+              {
+                pubkey: payer.publicKey,
+                permissions: Permissions.fromPermissions([
+                  Permission.VoteEscrow,
+                  Permission.VoteTransaction,
+                ]),
+              },
+            ],
+          ],
+        },
+        { setThreshold: [2] },
+        {
+          setMetadata: [null],
+        },
       ])
       .accountsPartial({
         multiWallet: multi_wallet,
@@ -116,12 +133,15 @@ describe("multi_wallet", () => {
     expect(accountData.members[1].pubkey.toBase58()).equal(
       payer.publicKey.toBase58()
     );
-    expect(accountData.threshold).equal(1); // Threshold should remain unchanged
+    expect(accountData.threshold).equal(2);
   });
 
   it("Set Owner to none!", async () => {
     const tx = await program.methods
-      .changeConfig([{ removeMembers: [[payer.publicKey]] }])
+      .changeConfig([
+        { removeMembers: [[payer.publicKey]] },
+        { setThreshold: [1] },
+      ])
       .accountsPartial({
         multiWallet: multi_wallet,
         payer: null,
@@ -163,7 +183,11 @@ describe("multi_wallet", () => {
     });
     const changeConfigIx = await program.methods
       .changeConfig([
-        { addMembers: [[{ pubkey: test.publicKey, label: 0 }]] },
+        {
+          addMembers: [
+            [{ pubkey: test.publicKey, permissions: Permissions.all() }],
+          ],
+        },
         { setThreshold: [2] },
       ])
       .accountsPartial({
@@ -186,11 +210,54 @@ describe("multi_wallet", () => {
     });
     const transactionMessageBytes =
       transactionMessageSerialize(compiledMessage);
+
+    const [transactionBuffer] = PublicKey.findProgramAddressSync(
+      [
+        Buffer.from("multi_wallet"),
+        multi_wallet.toBuffer(),
+        Buffer.from("transaction_buffer"),
+        wallet.publicKey.toBuffer(),
+        new BN(0).toArrayLike(Buffer, "le", 1),
+      ],
+      program.programId
+    );
+    const hash = sha256(transactionMessageBytes);
+
+    const transactionBufferIx = await program.methods
+      .transactionBufferCreate({
+        bufferIndex: 0,
+        vaultIndex: 0,
+        finalBufferHash: Array.from(hash),
+        finalBufferSize: transactionMessageBytes.length,
+        buffer: transactionMessageBytes,
+      })
+      .accountsPartial({
+        multiWallet: multi_wallet,
+        creator: wallet.publicKey,
+        rentPayer: wallet.publicKey,
+      })
+      .signers([wallet])
+      .instruction();
+
+    const transactionBufferTx = new VersionedTransaction(
+      new TransactionMessage({
+        instructions: [transactionBufferIx],
+        payerKey: wallet.publicKey,
+        recentBlockhash: (await connection.getLatestBlockhash()).blockhash,
+      }).compileToV0Message([])
+    );
+    transactionBufferTx.sign([wallet]);
+    console.log(transactionBufferTx.serialize().length);
+
+    const sig = await connection.sendTransaction(transactionBufferTx);
+
+    await connection.confirmTransaction(sig);
+
     const { accountMetas, lookupTableAccounts } =
       await accountsForTransactionExecute({
         connection: connection,
         message: compiledMessage,
-        vaultMessage: vaultTransactionMessageBeet.deserialize(
+        transactionMessage: transactionMessageBeet.deserialize(
           transactionMessageBytes
         )[0],
         vaultPda: multi_wallet_vault,
@@ -198,8 +265,12 @@ describe("multi_wallet", () => {
       });
 
     const vaultTransactionExecuteIx = await program.methods
-      .vaultTransactionExecute(0, transactionMessageBytes)
-      .accountsPartial({ multiWallet: multi_wallet })
+      .vaultTransactionExecute(0)
+      .accountsPartial({
+        multiWallet: multi_wallet,
+        rentPayer: wallet.publicKey,
+        transactionBuffer,
+      })
       .remainingAccounts(accountMetas)
       .instruction();
     const transaction = new VersionedTransaction(
@@ -210,6 +281,7 @@ describe("multi_wallet", () => {
       }).compileToV0Message(lookupTableAccounts)
     );
     transaction.sign([wallet]);
+    console.log(transaction.serialize().length);
 
     const txSig = await connection.sendTransaction(transaction);
 
@@ -234,8 +306,8 @@ describe("multi_wallet", () => {
       .initiateEscrowAsNonOwner(
         new anchor.BN(1),
         [
-          { pubkey: payer.publicKey, label: 1 },
-          { pubkey: wallet.publicKey, label: 0 },
+          { pubkey: payer.publicKey, permissions: Permissions.all() },
+          { pubkey: wallet.publicKey, permissions: Permissions.all() },
         ],
         new anchor.BN(LAMPORTS_PER_SOL * 0.001),
         2
@@ -243,10 +315,10 @@ describe("multi_wallet", () => {
       .accountsPartial({
         member: wallet.publicKey,
         multiWallet: multi_wallet,
-        payer: payer.publicKey,
+        proposer: payer.publicKey,
         escrowVault: native_vault,
         escrowTokenVault: null,
-        payerTokenAccount: null,
+        proposerTokenAccount: null,
         mint: null,
         tokenProgram: null,
       })
@@ -271,7 +343,7 @@ describe("multi_wallet", () => {
     );
     expect(escrowData.proposer.toBase58()).equal(payer.publicKey.toBase58());
     const tx2 = await program.methods
-      .cancelEscrowAsProposer()
+      .cancelEscrowAsNonOwner()
       .accountsPartial({
         escrow,
         proposer: payer.publicKey,
@@ -301,8 +373,8 @@ describe("multi_wallet", () => {
       .initiateEscrowAsNonOwner(
         new anchor.BN(1),
         [
-          { pubkey: payer.publicKey, label: null },
-          { pubkey: wallet.publicKey, label: 0 },
+          { pubkey: payer.publicKey, permissions: Permissions.all() },
+          { pubkey: wallet.publicKey, permissions: Permissions.all() },
         ],
         new anchor.BN(LAMPORTS_PER_SOL * 0.001),
         2
@@ -310,10 +382,10 @@ describe("multi_wallet", () => {
       .accountsPartial({
         member: wallet.publicKey,
         multiWallet: multi_wallet,
-        payer: payer.publicKey,
+        proposer: payer.publicKey,
         escrowVault: native_vault,
         escrowTokenVault: null,
-        payerTokenAccount: null,
+        proposerTokenAccount: null,
         mint: null,
         tokenProgram: null,
       })
@@ -378,8 +450,8 @@ describe("multi_wallet", () => {
         .initiateEscrowAsNonOwner(
           new anchor.BN(randomId),
           [
-            { pubkey: payer.publicKey, label: null },
-            { pubkey: wallet.publicKey, label: 0 },
+            { pubkey: payer.publicKey, permissions: Permissions.all() },
+            { pubkey: wallet.publicKey, permissions: Permissions.all() },
           ],
           new anchor.BN(LAMPORTS_PER_SOL * 0.001),
           2
@@ -387,10 +459,10 @@ describe("multi_wallet", () => {
         .accountsPartial({
           member: wallet.publicKey,
           multiWallet: multi_wallet,
-          payer: payer.publicKey,
+          proposer: payer.publicKey,
           escrowVault: native_vault,
           escrowTokenVault: null,
-          payerTokenAccount: null,
+          proposerTokenAccount: null,
           mint: null,
           tokenProgram: null,
         })
@@ -407,6 +479,7 @@ describe("multi_wallet", () => {
     const tx2 = await program.methods
       .executeEscrowAsOwner()
       .accountsPartial({
+        payer: wallet.publicKey,
         escrow: getEscrow(id),
         recipient: wallet.publicKey,
         escrowVault: getNativeVault(id),
@@ -423,7 +496,7 @@ describe("multi_wallet", () => {
 
     console.log("Accepted escrow as owner:", tx2);
     const tx3 = await program.methods
-      .cancelEscrowAsProposer()
+      .cancelEscrowAsNonOwner()
       .accountsPartial({
         escrow: getEscrow(id2),
         proposer: payer.publicKey,
@@ -519,8 +592,8 @@ describe("multi_wallet", () => {
     const tx2 = await program.methods
       .executeEscrowAsNonOwner(
         [
-          { pubkey: test.publicKey, label: null },
-          { pubkey: wallet.publicKey, label: 0 },
+          { pubkey: test.publicKey, permissions: Permissions.all() },
+          { pubkey: wallet.publicKey, permissions: Permissions.all() },
         ],
         2
       )

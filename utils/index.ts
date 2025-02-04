@@ -5,18 +5,16 @@ import {
   Connection,
   MessageV0,
   PublicKey,
-  TransactionMessage,
+  TransactionMessage as SolanaTransactionMessage,
   VersionedTransaction,
 } from "@solana/web3.js";
 import { Buffer } from "buffer";
 import invariant from "invariant";
 import { compileToWrappedMessageV0 } from "./compileToWrappedMessageV0";
-import { MultisigCompiledInstruction } from "./types/MultisigCompiledInstruction";
-import { MultisigMessageAddressTableLookup } from "./types/MultisigMessageAddressTableLookup";
 import {
-  VaultTransactionMessage,
-  vaultTransactionMessageBeet,
-} from "./types/VaultTransactionMessage";
+  TransactionMessage,
+  transactionMessageBeet,
+} from "./types/transactionMessage";
 
 export function toUtfBytes(str: string): Uint8Array {
   return new TextEncoder().encode(str);
@@ -61,10 +59,10 @@ export function getAvailableMemoSize(
 }
 
 export function isStaticWritableIndex(
-  message: VaultTransactionMessage,
+  message: TransactionMessage,
   index: number
 ) {
-  const numAccountKeys = message.numAccountKeys;
+  const numAccountKeys = message.accountKeys.length;
   const { numSigners, numWritableSigners, numWritableNonSigners } = message;
 
   if (index >= numAccountKeys) {
@@ -87,7 +85,7 @@ export function isStaticWritableIndex(
   return false;
 }
 
-export function isSignerIndex(message: VaultTransactionMessage, index: number) {
+export function isSignerIndex(message: TransactionMessage, index: number) {
   return index < message.numSigners;
 }
 
@@ -95,7 +93,7 @@ export function transactionMessageToCompileMessage({
   message,
   addressLookupTableAccounts,
 }: {
-  message: TransactionMessage;
+  message: SolanaTransactionMessage;
   addressLookupTableAccounts?: AddressLookupTableAccount[];
 }) {
   const compiledMessage = compileToWrappedMessageV0({
@@ -109,7 +107,8 @@ export function transactionMessageToCompileMessage({
 }
 
 export function transactionMessageSerialize(compiledMessage: MessageV0) {
-  const [transactionMessageBytes] = vaultTransactionMessageBeet.serialize({
+  // We use custom serialization for `transaction_message` that ensures as small byte size as possible.
+  const [transactionMessageBytes] = transactionMessageBeet.serialize({
     numSigners: compiledMessage.header.numRequiredSignatures,
     numWritableSigners:
       compiledMessage.header.numRequiredSignatures -
@@ -118,21 +117,15 @@ export function transactionMessageSerialize(compiledMessage: MessageV0) {
       compiledMessage.staticAccountKeys.length -
       compiledMessage.header.numRequiredSignatures -
       compiledMessage.header.numReadonlyUnsignedAccounts,
-    numAccountKeys: compiledMessage.staticAccountKeys.length,
+    accountKeys: compiledMessage.staticAccountKeys,
     instructions: compiledMessage.compiledInstructions.map((ix) => {
       return {
         programIdIndex: ix.programIdIndex,
-        accountIndexes: new Uint8Array(ix.accountKeyIndexes),
-        data: ix.data,
-      } as MultisigCompiledInstruction;
+        accountIndexes: ix.accountKeyIndexes,
+        data: Array.from(ix.data),
+      };
     }),
-    addressTableLookups: compiledMessage.addressTableLookups.map((atl) => {
-      return {
-        accountKey: atl.accountKey,
-        writableIndexes: new Uint8Array(atl.writableIndexes),
-        readonlyIndexes: new Uint8Array(atl.readonlyIndexes),
-      } as MultisigMessageAddressTableLookup;
-    }),
+    addressTableLookups: compiledMessage.addressTableLookups,
   });
   return transactionMessageBytes;
 }
@@ -141,13 +134,13 @@ export function transactionMessageSerialize(compiledMessage: MessageV0) {
 export async function accountsForTransactionExecute({
   connection,
   vaultPda,
-  vaultMessage,
+  transactionMessage,
   message,
   signers,
 }: {
   connection: Connection;
   message: MessageV0;
-  vaultMessage: VaultTransactionMessage;
+  transactionMessage: TransactionMessage;
   vaultPda: PublicKey;
   signers: PublicKey[];
 }): Promise<{
@@ -189,11 +182,11 @@ export async function accountsForTransactionExecute({
   ] of message.staticAccountKeys.entries()) {
     accountMetas.push({
       pubkey: accountKey,
-      isWritable: isStaticWritableIndex(vaultMessage, accountIndex),
+      isWritable: isStaticWritableIndex(transactionMessage, accountIndex),
       // NOTE: vaultPda cannot be marked as signers,
       // because they are PDAs and hence won't have their signatures on the transaction.
       isSigner:
-        isSignerIndex(vaultMessage, accountIndex) &&
+        isSignerIndex(transactionMessage, accountIndex) &&
         !accountKey.equals(vaultPda),
     });
   }

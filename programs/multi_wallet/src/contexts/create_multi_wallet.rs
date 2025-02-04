@@ -16,3 +16,17 @@ pub struct CreateMultiWallet<'info> {
     pub multi_wallet: Account<'info, MultiWallet>,
     pub system_program: Program<'info, System>
 }
+
+impl<'info> CreateMultiWallet<'info> {
+    pub fn process(ctx: Context<Self>, create_key: Member, metadata: Option<Pubkey>) -> Result<()> {
+        let multi_wallet = &mut ctx.accounts.multi_wallet;
+        multi_wallet.create_key = create_key.pubkey.key();
+        multi_wallet.members = [create_key].to_vec();
+        multi_wallet.bump = ctx.bumps.multi_wallet;
+        multi_wallet.metadata = metadata;
+        multi_wallet.threshold = 1;
+        multi_wallet.pending_offers = Vec::new();
+        MultiWallet::check_state_validity(&multi_wallet.threshold, &multi_wallet.members)?;
+        Ok(())
+    }
+}
