@@ -1,36 +1,13 @@
-import * as beet from "@metaplex-foundation/beet";
-import * as beetSolana from "@metaplex-foundation/beet-solana";
 import { PublicKey } from "@solana/web3.js";
 
 export type IPermissions = {
   mask: number;
 };
 
-/**
- * @category userTypes
- * @category generated
- */
-export const permissionsBeet = new beet.BeetArgsStruct<IPermissions>(
-  [["mask", beet.u8]],
-  "Permissions"
-);
-
 export type Member = {
-  key: PublicKey;
-  permissions: IPermissions;
+  pubkey: PublicKey;
+  permissions: IPermissions | null;
 };
-
-/**
- * @category userTypes
- * @category generated
- */
-export const memberBeet = new beet.BeetArgsStruct<Member>(
-  [
-    ["key", beetSolana.publicKey],
-    ["permissions", permissionsBeet],
-  ],
-  "Member"
-);
 
 export const Permission = {
   InitiateTransaction: 1,

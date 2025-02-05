@@ -1,8 +1,8 @@
 import {
-  AccountKeysFromLookups,
+  type AccountKeysFromLookups,
   AddressLookupTableAccount,
-  MessageAddressTableLookup,
-  MessageHeader,
+  type MessageAddressTableLookup,
+  type MessageHeader,
   PublicKey,
   TransactionInstruction,
 } from "@solana/web3.js";
@@ -21,10 +21,10 @@ type KeyMetaMap = Map<string, CompiledKeyMeta>;
  *  @see https://github.com/solana-labs/solana-web3.js/blob/87d33ac68e2453b8a01cf8c425aa7623888434e8/packages/library-legacy/src/message/compiled-keys.ts
  */
 export class CompiledKeys {
-  payer: PublicKey;
+  payer: string;
   keyMetaMap: KeyMetaMap;
 
-  constructor(payer: PublicKey, keyMetaMap: KeyMetaMap) {
+  constructor(payer: string, keyMetaMap: KeyMetaMap) {
     this.payer = payer;
     this.keyMetaMap = keyMetaMap;
   }
@@ -36,11 +36,10 @@ export class CompiledKeys {
    */
   static compile(
     instructions: Array<TransactionInstruction>,
-    payer: PublicKey
+    payer: string
   ): CompiledKeys {
     const keyMetaMap: KeyMetaMap = new Map();
-    const getOrInsertDefault = (pubkey: PublicKey): CompiledKeyMeta => {
-      const address = pubkey.toBase58();
+    const getOrInsertDefault = (address: string): CompiledKeyMeta => {
       let keyMeta = keyMetaMap.get(address);
       if (keyMeta === undefined) {
         keyMeta = {
@@ -60,9 +59,9 @@ export class CompiledKeys {
     for (const ix of instructions) {
       // This is the only difference from the original.
       // getOrInsertDefault(ix.programId).isInvoked = true;
-      getOrInsertDefault(ix.programId).isInvoked = false;
+      getOrInsertDefault(ix.programId.toString()).isInvoked = false;
       for (const accountMeta of ix.keys) {
-        const keyMeta = getOrInsertDefault(accountMeta.pubkey);
+        const keyMeta = getOrInsertDefault(accountMeta.pubkey.toString());
         keyMeta.isSigner ||= accountMeta.isSigner;
         keyMeta.isWritable ||= accountMeta.isWritable;
       }
@@ -102,7 +101,7 @@ export class CompiledKeys {
       );
       const [payerAddress] = writableSigners[0];
       assert(
-        payerAddress === this.payer.toBase58(),
+        payerAddress === this.payer,
         "Expected first writable signer key to be the fee payer"
       );
     }

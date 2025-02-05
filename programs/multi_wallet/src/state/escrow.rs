@@ -44,7 +44,7 @@ impl Escrow {
 		1  + // optional
 		4  + // vector
         new_members_length * 34 +
-        2
+        2 // threshold
     }
 
     pub fn escrow_transfer<'info>(

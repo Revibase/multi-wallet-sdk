@@ -56,6 +56,9 @@ impl<'info> ChangeConfig<'info> {
         let multi_wallet = &mut ctx.accounts.multi_wallet;
         for action in config_actions {
             match action {
+                ConfigAction::SetMembers(set_members) => {
+                    multi_wallet.set_members(set_members);
+                }
                 ConfigAction::AddMembers(add_members) => {
                     multi_wallet.add_members(add_members);
                 }

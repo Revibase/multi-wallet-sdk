@@ -1,61 +1,94 @@
-import { bignum, u32, u64, u8 } from "@metaplex-foundation/beet";
 import {
-  AccountMeta,
+  type AccountMeta,
   AddressLookupTableAccount,
   Connection,
+  LAMPORTS_PER_SOL,
   MessageV0,
   PublicKey,
   TransactionMessage as SolanaTransactionMessage,
+  TransactionInstruction,
   VersionedTransaction,
 } from "@solana/web3.js";
+import BN from "bn.js";
 import { Buffer } from "buffer";
 import invariant from "invariant";
-import { compileToWrappedMessageV0 } from "./compileToWrappedMessageV0";
 import {
-  TransactionMessage,
+  type TransactionMessage,
   transactionMessageBeet,
-} from "./types/transactionMessage";
+} from "../types/index.js";
+import { compileToWrappedMessageV0, program } from "./index.js";
 
-export function toUtfBytes(str: string): Uint8Array {
-  return new TextEncoder().encode(str);
-}
-
-export function toU8Bytes(num: number): Uint8Array {
-  const bytes = Buffer.alloc(1);
-  u8.write(bytes, 0, num);
-  return bytes;
-}
-
-export function toU32Bytes(num: number): Uint8Array {
-  const bytes = Buffer.alloc(4);
-  u32.write(bytes, 0, num);
-  return bytes;
-}
-
-export function toU64Bytes(num: bigint): Uint8Array {
-  const bytes = Buffer.alloc(8);
-  u64.write(bytes, 0, num);
-  return bytes;
-}
-
-export function toBigInt(number: bignum): bigint {
-  return BigInt(number.toString());
-}
-
-const MAX_TX_SIZE_BYTES = 1232;
-const STRING_LEN_SIZE = 4;
-export function getAvailableMemoSize(
-  txWithoutMemo: VersionedTransaction
-): number {
-  const txSize = txWithoutMemo.serialize().length;
-  return (
-    MAX_TX_SIZE_BYTES -
-    txSize -
-    STRING_LEN_SIZE -
-    // Sometimes long memo can trigger switching from 1 to 2 bytes length encoding in Compact-u16,
-    // so we reserve 1 extra byte to make sure.
-    1
+export function getMultiSigFromAddress(address: PublicKey) {
+  const [multisigPda] = PublicKey.findProgramAddressSync(
+    [Buffer.from("multi_wallet"), address.toBuffer()],
+    program.programId
   );
+
+  return multisigPda;
+}
+
+export function getEscrow(walletAddress: PublicKey, identifier: number) {
+  const [escrow] = PublicKey.findProgramAddressSync(
+    [
+      Buffer.from("escrow"),
+      walletAddress.toBuffer(),
+      new BN(identifier).toArrayLike(Buffer, "le", 8),
+    ],
+    program.programId
+  );
+  return escrow;
+}
+
+export function getEscrowNativeVault(
+  walletAddress: PublicKey,
+  identifier: number
+) {
+  const [escrow] = PublicKey.findProgramAddressSync(
+    [
+      Buffer.from("escrow"),
+      walletAddress.toBuffer(),
+      new BN(identifier).toArrayLike(Buffer, "le", 8),
+      Buffer.from("vault"),
+    ],
+    program.programId
+  );
+  return escrow;
+}
+
+export function getVaultFromAddress(address: PublicKey, vault_index = 0) {
+  const multisigPda = getMultiSigFromAddress(address);
+  const [multisigVaultPda] = PublicKey.findProgramAddressSync(
+    [
+      Buffer.from("multi_wallet"),
+      multisigPda.toBuffer(),
+      Buffer.from("vault"),
+      new BN(vault_index).toArrayLike(Buffer, "le", 2),
+    ],
+    program.programId
+  );
+  return multisigVaultPda;
+}
+
+export function getTransactionBuffer(
+  walletAddress: PublicKey,
+  creator: PublicKey,
+  index: number
+) {
+  if (index > 255) {
+    throw new Error("Index cannot be greater than 255.");
+  }
+  const multisigPda = getMultiSigFromAddress(walletAddress);
+  const [transactionBuffer] = PublicKey.findProgramAddressSync(
+    [
+      Buffer.from("multi_wallet"),
+      multisigPda.toBuffer(),
+      Buffer.from("transaction_buffer"),
+      new PublicKey(creator).toBuffer(),
+      new BN(index).toArrayLike(Buffer, "le", 1),
+    ],
+    program.programId
+  );
+  return transactionBuffer;
 }
 
 export function isStaticWritableIndex(
@@ -97,7 +130,7 @@ export function transactionMessageToCompileMessage({
   addressLookupTableAccounts?: AddressLookupTableAccount[];
 }) {
   const compiledMessage = compileToWrappedMessageV0({
-    payerKey: message.payerKey,
+    payerKey: message.payerKey.toString(),
     recentBlockhash: message.recentBlockhash,
     instructions: message.instructions,
     addressLookupTableAccounts,
@@ -107,7 +140,6 @@ export function transactionMessageToCompileMessage({
 }
 
 export function transactionMessageSerialize(compiledMessage: MessageV0) {
-  // We use custom serialization for `transaction_message` that ensures as small byte size as possible.
   const [transactionMessageBytes] = transactionMessageBeet.serialize({
     numSigners: compiledMessage.header.numRequiredSignatures,
     numWritableSigners:
@@ -252,4 +284,40 @@ export async function accountsForTransactionExecute({
     accountMetas,
     lookupTableAccounts: [...addressLookupTableAccounts.values()],
   };
+}
+
+export const estimateJitoTips = async (
+  level = "ema_landed_tips_50th_percentile"
+) => {
+  const response = await fetch(
+    "https://bundles.jito.wtf/api/v1/bundles/tip_floor"
+  );
+  const result = await response.json();
+  const tipAmount = Math.round(result[0][level] * LAMPORTS_PER_SOL) as number;
+
+  return tipAmount;
+};
+
+export async function simulateTransaction(
+  connection: Connection,
+  instructions: TransactionInstruction[],
+  payer: PublicKey,
+  lookupTables: AddressLookupTableAccount[] = [],
+  replaceRecentBlockhash = true,
+  sigVerify = false,
+  innerInstructions = true
+) {
+  const testVersionedTxn = new VersionedTransaction(
+    new SolanaTransactionMessage({
+      instructions,
+      payerKey: payer,
+      recentBlockhash: PublicKey.default.toString(),
+    }).compileToV0Message(lookupTables)
+  );
+  const simulation = await connection.simulateTransaction(testVersionedTxn, {
+    replaceRecentBlockhash,
+    sigVerify,
+    innerInstructions,
+  });
+  return simulation;
 }

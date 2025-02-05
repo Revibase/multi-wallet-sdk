@@ -1,13 +1,12 @@
 import {
-  AccountKeysFromLookups,
+  type AccountKeysFromLookups,
   AddressLookupTableAccount,
   MessageAccountKeys,
-  MessageAddressTableLookup,
+  type MessageAddressTableLookup,
   MessageV0,
-  PublicKey,
   TransactionInstruction,
 } from "@solana/web3.js";
-import { CompiledKeys } from "./compiled-keys";
+import { CompiledKeys } from "./index.js";
 
 export function compileToWrappedMessageV0({
   payerKey,
@@ -15,7 +14,7 @@ export function compileToWrappedMessageV0({
   instructions,
   addressLookupTableAccounts,
 }: {
-  payerKey: PublicKey;
+  payerKey: string;
   recentBlockhash: string;
   instructions: TransactionInstruction[];
   addressLookupTableAccounts?: AddressLookupTableAccount[];

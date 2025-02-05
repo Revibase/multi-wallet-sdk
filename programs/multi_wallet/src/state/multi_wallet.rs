@@ -5,6 +5,7 @@ use std::collections::HashSet;
 
 #[derive(AnchorSerialize, AnchorDeserialize)]
 pub enum ConfigAction {
+    SetMembers(Vec<Member>),
     AddMembers(Vec<Member>),
     RemoveMembers(Vec<Pubkey>),
     SetThreshold(u8),
@@ -80,7 +81,7 @@ impl MultiWallet {
         1  + // bump
         4  + // members vector length
         members_length * 34 + // members
-        4 + // bool
+        4 + // pending offer vector length
         num_offers * 32 + 
         1 + // option
         32 // metadata
