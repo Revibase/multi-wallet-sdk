@@ -21,8 +21,13 @@ export async function initiateEscrowAsOwner({
 }) {
   const multisigPda = getMultiSigFromAddress(walletAddress);
 
-  return await program.methods
-    .initiateEscrowAsOwner(new BN(identifier), recipient, new BN(amount), mint)
+  return await program()
+    .methods.initiateEscrowAsOwner(
+      new BN(identifier),
+      recipient,
+      new BN(amount),
+      mint
+    )
     .accountsPartial({
       multiWallet: multisigPda,
       payer: feePayer,

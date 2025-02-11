@@ -33,8 +33,8 @@ export async function cancelEscrowAsNonOwner({
       tokenProgram
     );
   }
-  return await program.methods
-    .cancelEscrowAsNonOwner()
+  return await program()
+    .methods.cancelEscrowAsNonOwner()
     .accountsPartial({
       escrow,
       proposer,

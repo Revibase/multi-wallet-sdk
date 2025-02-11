@@ -1,4 +1,4 @@
-import { Connection, MessageV0, PublicKey } from "@solana/web3.js";
+import { MessageV0, PublicKey } from "@solana/web3.js";
 import { type TransactionMessage } from "../types/index.js";
 import {
   accountsForTransactionExecute,
@@ -9,7 +9,6 @@ import {
 } from "../utils/index.js";
 
 export async function createVaultExecute({
-  connection,
   walletAddress,
   creator,
   signers,
@@ -18,7 +17,6 @@ export async function createVaultExecute({
   compiledMessage,
   transactionMessage,
 }: {
-  connection: Connection;
   walletAddress: PublicKey;
   creator: PublicKey;
   feePayer: PublicKey;
@@ -27,6 +25,7 @@ export async function createVaultExecute({
   compiledMessage: MessageV0;
   transactionMessage: TransactionMessage;
 }) {
+  const connection = program().provider.connection;
   const multisigPda = getMultiSigFromAddress(walletAddress);
   const vaultPda = getVaultFromAddress(walletAddress);
   const transactionBuffer = getTransactionBuffer(
@@ -44,8 +43,8 @@ export async function createVaultExecute({
       signers,
     });
 
-  const vaultTransactionExecuteIx = await program.methods
-    .vaultTransactionExecute(0)
+  const vaultTransactionExecuteIx = await program()
+    .methods.vaultTransactionExecute(0)
     .accountsPartial({
       multiWallet: multisigPda,
       transactionBuffer,

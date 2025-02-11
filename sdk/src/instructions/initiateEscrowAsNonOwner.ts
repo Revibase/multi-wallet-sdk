@@ -47,8 +47,9 @@ export async function initiateEscrowAsNonOwner({
       tokenProgram
     );
   }
-  return await program.methods
-    .initiateEscrowAsNonOwner(
+
+  return await program()
+    .methods.initiateEscrowAsNonOwner(
       new BN(identifier),
       newOwners,
       new BN(amount),

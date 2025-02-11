@@ -1,10 +1,9 @@
 import { getAssociatedTokenAddressSync } from "@solana/spl-token";
-import { Connection, PublicKey } from "@solana/web3.js";
+import { PublicKey } from "@solana/web3.js";
 import { fetchEscrowData } from "../methods/fetchEscrowData.js";
 import { getEscrow, getEscrowNativeVault, program } from "../utils/index.js";
 
 export async function cancelEscrowAsOwner({
-  connection,
   rentCollector,
   signers,
   identifier,
@@ -12,7 +11,6 @@ export async function cancelEscrowAsOwner({
   mint = null,
   tokenProgram = null,
 }: {
-  connection: Connection;
   rentCollector: PublicKey;
   signers: PublicKey[];
   identifier: number;
@@ -21,11 +19,7 @@ export async function cancelEscrowAsOwner({
   tokenProgram?: PublicKey | null;
 }) {
   const escrow = getEscrow(walletAddress, identifier);
-  const escrowData = await fetchEscrowData(
-    connection,
-    walletAddress,
-    identifier
-  );
+  const escrowData = await fetchEscrowData(walletAddress, identifier);
   let escrowVault = null;
   let escrowTokenVault = null;
   let proposerTokenAccount = null;
@@ -48,8 +42,8 @@ export async function cancelEscrowAsOwner({
     }
   }
 
-  return await program.methods
-    .cancelEscrowAsOwner()
+  return await program()
+    .methods.cancelEscrowAsOwner()
     .accountsPartial({
       escrow,
       proposer: escrowData.proposer || rentCollector,

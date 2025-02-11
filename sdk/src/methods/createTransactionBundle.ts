@@ -1,6 +1,5 @@
 import {
   AddressLookupTableAccount,
-  Connection,
   PublicKey,
   TransactionInstruction,
 } from "@solana/web3.js";
@@ -12,11 +11,11 @@ import {
 import {
   ADDRESS_LOOK_UP_TABLE,
   estimateJitoTips,
+  program,
   simulateTransaction,
 } from "../utils/index.js";
 
 export async function createTransactionBundle({
-  connection,
   feePayer,
   instructions,
   walletAddress,
@@ -26,7 +25,6 @@ export async function createTransactionBundle({
   tipAmount,
 }: {
   signers: PublicKey[];
-  connection: Connection;
   feePayer: PublicKey;
   instructions: TransactionInstruction[];
   walletAddress: PublicKey;
@@ -34,6 +32,7 @@ export async function createTransactionBundle({
   tipAmount?: number;
   lookUpTables?: AddressLookupTableAccount[];
 }) {
+  const connection = program().provider.connection;
   const simulation = await simulateTransaction(
     connection,
     instructions,
@@ -62,7 +61,6 @@ export async function createTransactionBundle({
   });
   const { vaultTransactionExecuteIx, lookupTableAccounts } =
     await createVaultExecute({
-      connection,
       walletAddress,
       feePayer,
       signers,

@@ -12,8 +12,8 @@ export async function createWallet({
   metadata: PublicKey | null;
 }) {
   const vaultPda = getVaultFromAddress(walletAddress);
-  const createWalletIx = await program.methods
-    .create(
+  const createWalletIx = await program()
+    .methods.create(
       {
         pubkey: new PublicKey(walletAddress),
         permissions: Permissions.all(),

@@ -58,8 +58,8 @@ export async function createTransactionBuffer({
     messageBytePart1 = transactionMessageBytes.slice(0, 900);
     messageBytePart2 = transactionMessageBytes.slice(900);
   }
-  const transactionBufferIx = await program.methods
-    .transactionBufferCreate({
+  const transactionBufferIx = await program()
+    .methods.transactionBufferCreate({
       bufferIndex,
       vaultIndex: 0,
       finalBufferHash: Array.from(hash),
@@ -75,8 +75,8 @@ export async function createTransactionBuffer({
 
   let transactionBufferExtendIx: TransactionInstruction | null = null;
   if (messageBytePart2) {
-    transactionBufferExtendIx = await program.methods
-      .transactionBufferExtend({ buffer: messageBytePart2 })
+    transactionBufferExtendIx = await program()
+      .methods.transactionBufferExtend({ buffer: messageBytePart2 })
       .accountsPartial({
         transactionBuffer,
         creator,

@@ -1,7 +1,24 @@
 import { Program } from "@coral-xyz/anchor";
-import { PublicKey } from "@solana/web3.js";
+import { Connection, PublicKey } from "@solana/web3.js";
 import { MultiWalletIdl } from "../idl/multi_wallet.js";
 import { type MultiWallet } from "../types/index.js";
+
+let programInstance: Program<MultiWallet> | null = null;
+
+export const initMultiWalletProgram = (connection: Connection) => {
+  programInstance = new Program<MultiWallet>(MultiWalletIdl as MultiWallet, {
+    connection,
+  });
+};
+
+export const program = () => {
+  if (!programInstance) {
+    throw new Error(
+      "Program is not initialized. Call initMultiWalletProgram(connection) first."
+    );
+  }
+  return programInstance;
+};
 
 export const JITO_TIP_ACCOUNTS = [
   "96gYZGLnJYVFmbjzopPSU6QiEV5fGqZNyN9nmNhvrZU5",
@@ -13,8 +30,6 @@ export const JITO_TIP_ACCOUNTS = [
   "DttWaMuVvTiduZRnguLF7jNxTgiMBZ1hyAumKUiL2KRL",
   "3AVi9Tg9Uo68tJfuvoKvqKNWKkC5wPdSSdeBnizKZ6jT",
 ];
-
-export const program = new Program<MultiWallet>(MultiWalletIdl as MultiWallet);
 
 export const ADDRESS_LOOK_UP_TABLE = new PublicKey(
   "Hg5CGGARH2PSh7ceV8KVqZ6VqW5bnFqdFabziVddHsDZ"

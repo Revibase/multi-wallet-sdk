@@ -1,4 +1,3 @@
-import * as anchor from "@coral-xyz/anchor";
 import {
   Connection,
   Keypair,
@@ -22,20 +21,14 @@ import {
   getVaultFromAddress,
   initiateEscrowAsNonOwner,
   initiateEscrowAsOwner,
-  MultiWallet,
+  initMultiWalletProgram,
   Permission,
   Permissions,
 } from "../sdk";
 
 describe("multi_wallet", () => {
-  // Configure the client to use the local cluster.
-  anchor.setProvider(anchor.AnchorProvider.env());
-
-  const program = anchor.workspace.MultiWallet as anchor.Program<MultiWallet>;
-  const connection = new Connection(
-    program.provider.connection.rpcEndpoint,
-    "confirmed"
-  );
+  const connection = new Connection("http://localhost:8899", "confirmed");
+  initMultiWalletProgram(connection);
   const payer = Keypair.generate();
   const wallet = Keypair.generate();
   const multi_wallet_vault = getVaultFromAddress(wallet.publicKey);
@@ -64,10 +57,7 @@ describe("multi_wallet", () => {
     const sig = await sendAndConfirmTransaction(connection, tx, [payer]);
     await connection.confirmTransaction(sig);
     // Validation
-    const accountData = await fetchMultiWalletData(
-      connection,
-      wallet.publicKey
-    );
+    const accountData = await fetchMultiWalletData(wallet.publicKey);
     expect(accountData.createKey.toBase58()).equal(wallet.publicKey.toBase58());
     expect(accountData.members.length).equal(1); // Only creator is a member
     expect(accountData.threshold).equal(1); // Single-sig wallet
@@ -110,10 +100,7 @@ describe("multi_wallet", () => {
       wallet,
     ]);
     console.log("Your transaction signature", sig);
-    const accountData = await fetchMultiWalletData(
-      connection,
-      wallet.publicKey
-    );
+    const accountData = await fetchMultiWalletData(wallet.publicKey);
     expect(accountData.members.length).equal(2); // Creator + Payer
     expect(accountData.members[1].pubkey.toBase58()).equal(
       payer.publicKey.toBase58()
@@ -140,10 +127,7 @@ describe("multi_wallet", () => {
       wallet,
     ]);
     console.log("Your transaction signature", sig);
-    const accountData = await fetchMultiWalletData(
-      connection,
-      wallet.publicKey
-    );
+    const accountData = await fetchMultiWalletData(wallet.publicKey);
     expect(accountData.members.length).equal(1); // Only creator remains
     expect(accountData.members[0].pubkey.toBase58()).equal(
       wallet.publicKey.toBase58()
@@ -186,7 +170,6 @@ describe("multi_wallet", () => {
     });
 
     const { result } = await createTransactionBundle({
-      connection,
       feePayer: payer.publicKey,
       instructions: [transferIx1, transferIx2, changeConfigIx],
       walletAddress: wallet.publicKey,
@@ -201,10 +184,7 @@ describe("multi_wallet", () => {
       await sendAndConfirmTransaction(connection, tx, [wallet, payer]);
     }
 
-    const accountData = await fetchMultiWalletData(
-      connection,
-      wallet.publicKey
-    );
+    const accountData = await fetchMultiWalletData(wallet.publicKey);
 
     expect(accountData.members.length).equal(2); // wallet + test
     expect(accountData.threshold).equal(2);
@@ -224,7 +204,6 @@ describe("multi_wallet", () => {
       amount: LAMPORTS_PER_SOL * 0.001,
       threshold: 2,
     });
-
     const tx = new Transaction().add(ix);
     tx.recentBlockhash = (await connection.getLatestBlockhash()).blockhash;
     tx.feePayer = payer.publicKey;
@@ -236,11 +215,7 @@ describe("multi_wallet", () => {
 
     console.log("Initiated escrow as proposer:", sig);
 
-    const escrowData = await fetchEscrowData(
-      connection,
-      wallet.publicKey,
-      identifier
-    );
+    const escrowData = await fetchEscrowData(wallet.publicKey, identifier);
 
     expect(escrowData.identifier.toNumber()).equal(identifier);
     expect(escrowData.recipient.amount.toNumber()).equal(
@@ -254,8 +229,8 @@ describe("multi_wallet", () => {
       walletAddress: wallet.publicKey,
     });
     const tx2 = new Transaction().add(ix2);
-    tx.recentBlockhash = (await connection.getLatestBlockhash()).blockhash;
-    tx.feePayer = payer.publicKey;
+    tx2.recentBlockhash = (await connection.getLatestBlockhash()).blockhash;
+    tx2.feePayer = payer.publicKey;
 
     const sig2 = await sendAndConfirmTransaction(connection, tx2, [payer]);
 
@@ -288,15 +263,14 @@ describe("multi_wallet", () => {
 
     console.log("Initiated escrow as proposer:", sig);
     const ix2 = await cancelEscrowAsOwner({
-      connection,
       rentCollector: payer.publicKey,
       signers: [wallet.publicKey, test.publicKey],
       identifier,
       walletAddress: wallet.publicKey,
     });
     const tx2 = new Transaction().add(ix2);
-    tx.recentBlockhash = (await connection.getLatestBlockhash()).blockhash;
-    tx.feePayer = payer.publicKey;
+    tx2.recentBlockhash = (await connection.getLatestBlockhash()).blockhash;
+    tx2.feePayer = payer.publicKey;
 
     const sig2 = await sendAndConfirmTransaction(connection, tx2, [
       payer,
@@ -390,7 +364,6 @@ describe("multi_wallet", () => {
 
     console.log("Initiated escrow as owner:", sig);
     const ix2 = await cancelEscrowAsOwner({
-      connection,
       rentCollector: wallet.publicKey,
       signers: [wallet.publicKey, payer.publicKey],
       identifier,

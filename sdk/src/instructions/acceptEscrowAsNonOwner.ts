@@ -39,8 +39,8 @@ export async function acceptEscrowAsNonOwner({
       tokenProgram
     );
   }
-  return await program.methods
-    .executeEscrowAsNonOwner(newMembers, threshold)
+  return await program()
+    .methods.executeEscrowAsNonOwner(newMembers, threshold)
     .accountsPartial({
       escrow,
       payer: feePayer,

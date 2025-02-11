@@ -37,8 +37,8 @@ export async function acceptEscrowAsOwner({
       tokenProgram
     );
   }
-  return await program.methods
-    .executeEscrowAsOwner()
+  return await program()
+    .methods.executeEscrowAsOwner()
     .accountsPartial({
       payer: feePayer,
       escrow,

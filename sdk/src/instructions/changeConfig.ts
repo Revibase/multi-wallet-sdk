@@ -42,8 +42,8 @@ export async function changeConfig({
     }
   }
 
-  return await program.methods
-    .changeConfig(config)
+  return await program()
+    .methods.changeConfig(config)
     .accountsPartial({
       multiWallet: multisigPda,
       payer: feePayer,

@@ -21,7 +21,7 @@ import { compileToWrappedMessageV0, program } from "./index.js";
 export function getMultiSigFromAddress(address: PublicKey) {
   const [multisigPda] = PublicKey.findProgramAddressSync(
     [Buffer.from("multi_wallet"), address.toBuffer()],
-    program.programId
+    program().programId
   );
 
   return multisigPda;
@@ -34,7 +34,7 @@ export function getEscrow(walletAddress: PublicKey, identifier: number) {
       walletAddress.toBuffer(),
       new BN(identifier).toArrayLike(Buffer, "le", 8),
     ],
-    program.programId
+    program().programId
   );
   return escrow;
 }
@@ -50,7 +50,7 @@ export function getEscrowNativeVault(
       new BN(identifier).toArrayLike(Buffer, "le", 8),
       Buffer.from("vault"),
     ],
-    program.programId
+    program().programId
   );
   return escrow;
 }
@@ -64,7 +64,7 @@ export function getVaultFromAddress(address: PublicKey, vault_index = 0) {
       Buffer.from("vault"),
       new BN(vault_index).toArrayLike(Buffer, "le", 2),
     ],
-    program.programId
+    program().programId
   );
   return multisigVaultPda;
 }
@@ -86,7 +86,7 @@ export function getTransactionBuffer(
       new PublicKey(creator).toBuffer(),
       new BN(index).toArrayLike(Buffer, "le", 1),
     ],
-    program.programId
+    program().programId
   );
   return transactionBuffer;
 }
