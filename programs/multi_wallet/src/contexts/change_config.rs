@@ -1,5 +1,5 @@
 use anchor_lang::prelude::*;
-use crate::{state::{MultiWallet, SEED_MULTISIG}, ChangeConfigEvent, ConfigAction, MultisigError, Permission};
+use crate::{state::{MultiWallet, Permission, SEED_MULTISIG}, ConfigAction, ConfigEvent, MultisigError};
 use anchor_lang::solana_program::sysvar::instructions as tx_instructions;
 #[event_cpi]
 #[derive(Accounts)]
@@ -90,7 +90,7 @@ impl<'info> ChangeConfig<'info> {
 
         MultiWallet::check_state_validity(&multi_wallet.threshold, &multi_wallet.members)?;
 
-        emit_cpi!(ChangeConfigEvent {
+        emit_cpi!(ConfigEvent {
             create_key: multi_wallet.create_key,
             members: multi_wallet.members.clone(),
             threshold: multi_wallet.threshold,

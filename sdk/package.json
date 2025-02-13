@@ -1,6 +1,6 @@
 {
   "name": "@revibase/multi-wallet",
-  "version": "1.0.10",
+  "version": "1.0.12",
   "scripts": {
     "clean": "rm -rf dist",
     "build": "npm run clean && tsc"

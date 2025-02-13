@@ -1,13 +1,6 @@
 import { PublicKey } from "@solana/web3.js";
-import { type Member } from "../types/index.js";
+import type { ConfigAction } from "../types/index.js";
 import { getMultiSigFromAddress, program } from "../utils/index.js";
-
-type ConfigAction =
-  | { type: "addMembers"; members: Member[] }
-  | { type: "removeMembers"; members: PublicKey[] }
-  | { type: "setMembers"; members: Member[] }
-  | { type: "setThreshold"; threshold: number }
-  | { type: "setMetadata"; metadata: PublicKey | null };
 
 export async function changeConfig({
   signers,

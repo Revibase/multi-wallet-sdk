@@ -1,6 +1,7 @@
 use anchor_lang::prelude::*;
-use crate::{state::{MultiWallet, SEED_MULTISIG}, Member};
+use crate::{state::{ConfigEvent, MultiWallet, SEED_MULTISIG}, Member};
 
+#[event_cpi]
 #[derive(Accounts)]
 #[instruction(create_key: Member)]
 pub struct CreateMultiWallet<'info> {
@@ -27,6 +28,13 @@ impl<'info> CreateMultiWallet<'info> {
         multi_wallet.threshold = 1;
         multi_wallet.pending_offers = Vec::new();
         MultiWallet::check_state_validity(&multi_wallet.threshold, &multi_wallet.members)?;
+
+        emit_cpi!(ConfigEvent {
+            create_key: multi_wallet.create_key,
+            members: multi_wallet.members.clone(),
+            threshold: multi_wallet.threshold,
+            metadata: multi_wallet.metadata,
+        });
         Ok(())
     }
 }

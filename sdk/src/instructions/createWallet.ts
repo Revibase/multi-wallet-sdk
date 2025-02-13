@@ -20,7 +20,7 @@ export async function createWallet({
       } as Member,
       metadata
     )
-    .accounts({
+    .accountsPartial({
       payer: feePayer,
     })
     .instruction();

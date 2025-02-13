@@ -3,7 +3,7 @@ use anchor_lang::prelude::*;
 use super::{Member, Recipient};
 
 #[event]
-pub struct ChangeConfigEvent {
+pub struct ConfigEvent {
     pub create_key: Pubkey,
     pub members: Vec<Member>,
     pub threshold: u8,

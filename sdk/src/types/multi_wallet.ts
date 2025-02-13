@@ -705,6 +705,38 @@ export type MultiWallet = {
         {
           name: "systemProgram";
           address: "11111111111111111111111111111111";
+        },
+        {
+          name: "eventAuthority";
+          pda: {
+            seeds: [
+              {
+                kind: "const";
+                value: [
+                  95,
+                  95,
+                  101,
+                  118,
+                  101,
+                  110,
+                  116,
+                  95,
+                  97,
+                  117,
+                  116,
+                  104,
+                  111,
+                  114,
+                  105,
+                  116,
+                  121
+                ];
+              }
+            ];
+          };
+        },
+        {
+          name: "program";
         }
       ];
       args: [
@@ -2118,8 +2150,8 @@ export type MultiWallet = {
   ];
   events: [
     {
-      name: "changeConfigEvent";
-      discriminator: [201, 112, 93, 219, 95, 244, 24, 240];
+      name: "configEvent";
+      discriminator: [162, 6, 172, 68, 201, 128, 119, 230];
     },
     {
       name: "escrowEvent";
@@ -2255,38 +2287,6 @@ export type MultiWallet = {
   ];
   types: [
     {
-      name: "changeConfigEvent";
-      type: {
-        kind: "struct";
-        fields: [
-          {
-            name: "createKey";
-            type: "pubkey";
-          },
-          {
-            name: "members";
-            type: {
-              vec: {
-                defined: {
-                  name: "member";
-                };
-              };
-            };
-          },
-          {
-            name: "threshold";
-            type: "u8";
-          },
-          {
-            name: "metadata";
-            type: {
-              option: "pubkey";
-            };
-          }
-        ];
-      };
-    },
-    {
       name: "configAction";
       type: {
         kind: "enum";
@@ -2334,6 +2334,38 @@ export type MultiWallet = {
                 option: "pubkey";
               }
             ];
+          }
+        ];
+      };
+    },
+    {
+      name: "configEvent";
+      type: {
+        kind: "struct";
+        fields: [
+          {
+            name: "createKey";
+            type: "pubkey";
+          },
+          {
+            name: "members";
+            type: {
+              vec: {
+                defined: {
+                  name: "member";
+                };
+              };
+            };
+          },
+          {
+            name: "threshold";
+            type: "u8";
+          },
+          {
+            name: "metadata";
+            type: {
+              option: "pubkey";
+            };
           }
         ];
       };

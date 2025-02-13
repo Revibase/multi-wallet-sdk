@@ -495,6 +495,23 @@ export const MultiWalletIdl = {
           name: "system_program",
           address: "11111111111111111111111111111111",
         },
+        {
+          name: "event_authority",
+          pda: {
+            seeds: [
+              {
+                kind: "const",
+                value: [
+                  95, 95, 101, 118, 101, 110, 116, 95, 97, 117, 116, 104, 111,
+                  114, 105, 116, 121,
+                ],
+              },
+            ],
+          },
+        },
+        {
+          name: "program",
+        },
       ],
       args: [
         {
@@ -1510,8 +1527,8 @@ export const MultiWalletIdl = {
   ],
   events: [
     {
-      name: "ChangeConfigEvent",
-      discriminator: [201, 112, 93, 219, 95, 244, 24, 240],
+      name: "ConfigEvent",
+      discriminator: [162, 6, 172, 68, 201, 128, 119, 230],
     },
     {
       name: "EscrowEvent",
@@ -1647,38 +1664,6 @@ export const MultiWalletIdl = {
   ],
   types: [
     {
-      name: "ChangeConfigEvent",
-      type: {
-        kind: "struct",
-        fields: [
-          {
-            name: "create_key",
-            type: "pubkey",
-          },
-          {
-            name: "members",
-            type: {
-              vec: {
-                defined: {
-                  name: "Member",
-                },
-              },
-            },
-          },
-          {
-            name: "threshold",
-            type: "u8",
-          },
-          {
-            name: "metadata",
-            type: {
-              option: "pubkey",
-            },
-          },
-        ],
-      },
-    },
-    {
       name: "ConfigAction",
       type: {
         kind: "enum",
@@ -1726,6 +1711,38 @@ export const MultiWalletIdl = {
                 option: "pubkey",
               },
             ],
+          },
+        ],
+      },
+    },
+    {
+      name: "ConfigEvent",
+      type: {
+        kind: "struct",
+        fields: [
+          {
+            name: "create_key",
+            type: "pubkey",
+          },
+          {
+            name: "members",
+            type: {
+              vec: {
+                defined: {
+                  name: "Member",
+                },
+              },
+            },
+          },
+          {
+            name: "threshold",
+            type: "u8",
+          },
+          {
+            name: "metadata",
+            type: {
+              option: "pubkey",
+            },
           },
         ],
       },
